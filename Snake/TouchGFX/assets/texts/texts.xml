@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextDatabase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="texts.xsd" Version="4.26.0">
+  <Languages>
+    <Language Id="GB" />
+  </Languages>
+  <Texts>
+    <TextGroup Id="Group1" />
+    <TextGroup Id="Unsorted">
+      <Text Id="__SingleUse_YRZQ" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">EASY</Translation>
+      </Text>
+      <Text Id="__SingleUse_TR2O" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">000000</Translation>
+      </Text>
+      <Text Id="__SingleUse_28BC" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">00000000</Translation>
+      </Text>
+      <Text Id="__SingleUse_O0EX" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">00000000</Translation>
+      </Text>
+      <Text Id="__SingleUse_LY3J" Alignment="Center" TypographyId="Default">
+        <Translation Language="GB">&lt;1&gt;</Translation>
+      </Text>
+      <Text Id="__SingleUse_7GQ6" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">&lt;1&gt;</Translation>
+      </Text>
+      <Text Id="__SingleUse_ID59" Alignment="Center" TypographyId="Default">
+        <Translation Language="GB">Change Difficult</Translation>
+      </Text>
+      <Text Id="__SingleUse_AXN4" Alignment="Center" TypographyId="Large">
+        <Translation Language="GB">&lt;1&gt;</Translation>
+      </Text>
+      <Text Id="__SingleUse_3HPF" Alignment="Center" TypographyId="Large">
+        <Translation Language="GB">&lt;1&gt;</Translation>
+      </Text>
+      <Text Id="__SingleUse_8K0P" Alignment="Left" TypographyId="Small">
+        <Translation Language="GB">High score</Translation>
+      </Text>
+      <Text Id="__SingleUse_OW9T" Alignment="Left" TypographyId="Small">
+        <Translation Language="GB">Your score</Translation>
+      </Text>
+      <Text Id="__SingleUse_HLNI" Alignment="Center" TypographyId="Large">
+        <Translation Language="GB">PLAY</Translation>
+      </Text>
+    </TextGroup>
+  </Texts>
+  <Typographies>
+    <Typography Id="Default" Font="verdana.ttf" Size="20" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" WildcardCharacterRanges="A-Z,0-9" />
+    <Typography Id="Large" Font="verdana.ttf" Size="40" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" WildcardCharacterRanges="A-Z,0-9" />
+    <Typography Id="Small" Font="verdana.ttf" Size="10" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" WildcardCharacterRanges="A-Z,0-9" />
+  </Typographies>
+</TextDatabase>
