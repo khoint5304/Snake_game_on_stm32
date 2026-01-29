@@ -28,6 +28,29 @@ extern "C"
     void Snake_PlayBuzzer(int durationMs);
 
     /**
+     * @brief Play music from ISD1820 audio module
+     *
+     * This function triggers the ISD1820 module to play the recorded audio.
+     * Called from TouchGFX when game over occurs.
+     */
+    void Snake_PlayMusic(void);
+
+    /**
+     * @brief Start recording audio to ISD1820
+     *
+     * This function pulls the REC pin low to start recording audio.
+     * Call Snake_StopRecording() to stop recording.
+     */
+    void Snake_StartRecording(void);
+
+    /**
+     * @brief Stop recording audio to ISD1820
+     *
+     * This function releases the REC pin to stop recording audio.
+     */
+    void Snake_StopRecording(void);
+
+    /**
      * @brief Get current system time in milliseconds
      * @return Current time in milliseconds since system start
      *

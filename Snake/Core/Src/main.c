@@ -32,6 +32,10 @@ extern void Snake_UpdateButtonStates(int up, int down, int left, int right);
 /* Buzzer control variables */
 static volatile uint32_t buzzerEndTick = 0;
 
+/* ISD1820 Audio Module control variables */
+static volatile uint32_t musicPlayEndTick = 0;
+#define ISD1820_PLAY_PULSE_MS 2 /* Pulse duration for play button (2ms) */
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -640,6 +644,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /* Configure ISD1820 Audio Module GPIO pins (PE9, PE10 as Output Push-Pull) */
+  HAL_GPIO_WritePin(GPIOE, ISD1820_PLAY_Pin | ISD1820_REC_Pin, GPIO_PIN_SET);
+  GPIO_InitStruct.Pin = ISD1820_PLAY_Pin | ISD1820_REC_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
@@ -998,6 +1010,13 @@ void StartDefaultTask(void *argument)
       buzzerEndTick = 0;
     }
 
+    /* Update ISD1820 PLAY pin state - release after pulse */
+    if (musicPlayEndTick > 0 && HAL_GetTick() >= musicPlayEndTick)
+    {
+      HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_SET);
+      musicPlayEndTick = 0;
+    }
+
     /* Delay for debouncing */
     osDelay(20);
   }
@@ -1016,6 +1035,45 @@ void Snake_PlayBuzzer(int durationMs)
     HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_SET);
     buzzerEndTick = HAL_GetTick() + (uint32_t)durationMs;
   }
+}
+
+/**
+ * @brief  Play music from ISD1820 audio module
+ * @retval None
+ *
+ * This function triggers the PLAY pin of ISD1820 with a 2ms pulse
+ * to start playing the pre-recorded audio.
+ */
+void Snake_PlayMusic(void)
+{
+  // Pull PLAY pin low for 2ms to trigger playback
+  HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_RESET);
+  musicPlayEndTick = HAL_GetTick() + ISD1820_PLAY_PULSE_MS;
+}
+
+/**
+ * @brief  Start recording audio to ISD1820
+ * @retval None
+ *
+ * This function pulls the REC pin low to start recording.
+ * Call Snake_StopRecording() to stop recording after the desired duration.
+ */
+void Snake_StartRecording(void)
+{
+  // Pull REC pin low to start recording
+  HAL_GPIO_WritePin(ISD1820_REC_GPIO_Port, ISD1820_REC_Pin, GPIO_PIN_RESET);
+}
+
+/**
+ * @brief  Stop recording audio to ISD1820
+ * @retval None
+ *
+ * This function releases the REC pin (sets high) to stop recording.
+ */
+void Snake_StopRecording(void)
+{
+  // Release REC pin (set high) to stop recording
+  HAL_GPIO_WritePin(ISD1820_REC_GPIO_Port, ISD1820_REC_Pin, GPIO_PIN_SET);
 }
 
 /**

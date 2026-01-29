@@ -10,8 +10,9 @@
 // Maximum snake segments we can display
 #define MAX_DISPLAY_SEGMENTS 100
 
-// External C function for buzzer
+// External C functions for audio output
 extern "C" void Snake_PlayBuzzer(int durationMs);
+extern "C" void Snake_PlayMusic(void);
 
 class Screen2View : public Screen2ViewBase
 {

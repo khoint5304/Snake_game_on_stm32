@@ -127,7 +127,8 @@ void Screen2View::handleSoundEvent()
         Snake_PlayBuzzer(300); // 0.3 second
         break;
     case SOUND_GAME_OVER:
-        Snake_PlayBuzzer(1000); // 1 second
+        Snake_PlayBuzzer(1000); // 1 second buzzer
+        Snake_PlayMusic();      // Play ISD1820 music
         break;
     default:
         break;
