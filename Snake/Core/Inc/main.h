@@ -84,6 +84,13 @@ extern "C"
 #define BTN_RIGHT_Pin GPIO_PIN_7
 #define BTN_RIGHT_GPIO_Port GPIOD
 
+/* ISD1820 Audio Module Definitions */
+/* Using PE9 and PE10 for ISD1820 control */
+#define ISD1820_PLAY_Pin GPIO_PIN_9
+#define ISD1820_PLAY_GPIO_Port GPIOE
+#define ISD1820_REC_Pin GPIO_PIN_10
+#define ISD1820_REC_GPIO_Port GPIOE
+
   /* USER CODE END Private defines */
 
 #ifdef __cplusplus
