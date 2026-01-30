@@ -575,9 +575,9 @@ HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
 
 
 
-## 7. Các Tính Năng Nâng Cao
+## 6. Các Tính Năng Nâng Cao
 
-### 7.1. BigFood Mechanics
+### 6.1. BigFood Mechanics
 - **Trigger**: Xuất hiện sau khi ăn 5 mồi thường
 - **Duration**: 5000ms (5 giây)
 - **Scoring**: Điểm giảm tuyến tính theo thời gian
@@ -590,7 +590,7 @@ HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
 - **Size**: 2×2 cells (20×20 pixels)
 - **Collision**: Check nếu snake head overlaps bất kỳ cell nào trong 2×2
 
-### 7.2. Wrap-Around Mechanics
+### 6.2. Wrap-Around Mechanics
 - Không có tường cứng (không game over khi chạm tường)
 - Snake teleport sang bên đối diện:
   ```cpp
@@ -601,7 +601,7 @@ HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
   ```
 - Game over chỉ xảy ra khi snake head va chạm với body
 
-### 7.3. Buffered Input
+### 6.3. Buffered Input
 - Lệnh di chuyển được buffer trong `nextDirection`
 - Ngăn chặn 180° turn (self-collision ngay lập tức)
 - Apply vào frame tiếp theo:
@@ -612,27 +612,27 @@ HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
   }
   ```
 
-### 7.4. High Score Reset
+### 6.4. High Score Reset
 - **Secret Combo**: Giữ cả 4 nút (UP + DOWN + LEFT + RIGHT) trong 3 giây
 - **Confirmation**: 2 beep sounds (200ms each, 100ms gap)
 - **Action**: `FlashStorage_EraseAll()` → Sector 23 erased
 - **Implemented in**: `defaultTask()` polling loop
 
-### 7.5. Difficulty Progression
+### 6.5. Difficulty Progression
 - Người chơi có thể chọn độ khó trước khi chơi (Screen1)
 - Mỗi level có tốc độ và điểm thưởng riêng
 - Không auto-scale (người chơi tự chọn challenge level)
 
-## 8. Performance & Optimization
+## 7. Performance & Optimization
 
-### 8.1. Performance Metrics
+### 7.1. Performance Metrics
 - **Frame Rate**: 60 FPS (stable)
 - **Memory**:
   - Stack: defaultTask 512 bytes, GUI_Task 32 KB
   - Heap: ~200 KB (TouchGFX assets cache)
   - Frame Buffer: 150 KB (240×320×2)
 
-### 8.2. Optimizations Applied
+### 7.2. Optimizations Applied
 
 **TouchGFX Rendering**:
 - Partial invalidation: Chỉ redraw snake segments thay đổi
@@ -649,7 +649,7 @@ HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
 - defaultTask: Normal priority (button polling đủ nhanh @ 20ms)
 
 
-## 11. Source Code Structure
+## 8. Source Code Structure
 ```
 Snake_game_on_stm32/
 ├── README.md                          # This file
