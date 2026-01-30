@@ -316,38 +316,11 @@ Total CPU Usage: 40-50% (during gameplay)
 
 ---
 
-### 2.8. Power Supply & Electrical
-
-#### 2.8.1. Power Sources
+### 2.8. Power Sources
 - **Main**: USB 5V (via ST-Link)
 - **Board Regulators**: 
   - 3.3V (for MCU, peripherals, LCD, sensors)
   - 1.2V (core voltage, regulated internally)
-
-#### 2.8.2. GPIO Drive Capabilities
-- **Output**: 
-  - Standard Output: 25 mA max per pin
-  - Buzzer (PG13): ~10 mA 
-  - ISD1820 (PD12): ~5 mA (open-drain trigger)
-  
-- **Input**:
-  - Buttons (PD4-7): Internal pull-up (~100 kΩ)
-  - Noise immunity: Schmitt trigger inputs
-
-#### 2.8.3. Supply Current Estimation
-```
-Running (normal gameplay):
-  MCU Core: ~40-50 mA
-  SDRAM: ~20-30 mA
-  LCD Display: ~50-80 mA
-  Other peripherals: ~10-20 mA
-  Total: ~150-200 mA
-
-Sleep Mode (if implemented):
-  CPU stopped: ~5-10 mA
-  Peripherals off: ~30-50 mA
-  Total: ~35-60 mA
-```
 
 ## 3. Thiết Kế Phần Mềm (Software Design)
 
