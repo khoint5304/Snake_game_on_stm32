@@ -484,3 +484,128 @@ Lần khởi động tiếp theo:
     - nếu hợp lệ thì sử dụng highScore đã lưu.
     - nếu không hợp lệ thì highScore = 0 (first boot hoặc corrupted data)
 ```
+
+---
+
+### 3.4. Thuật toán game Snake
+
+#### 3.4.1. Cấu trúc dữ liệu chính
+
+Các hằng số sau được sử dụng xuyên suốt thuật toán
+```
+GRID_WIDTH, GRID_HEIGHT # Kích thước lưới logic của game (đơn vị: ô)
+MAX_SNAKE_LENGTH # Độ dài tối đa của rắn, dùng để khai báo mảng tĩnh lưu thân rắn
+BIGFOOD_DURATION_MS # Thời gian tồn tại tối đa của BigFood (ms)
+BIGFOOD_APPEAR_AFTER # Số lần ăn food thường để spawn BigFood
+BIGFOOD_MAX_SCORE # Điểm tối đa khi ăn BigFood
+```
+
+Dữ liệu vị trí trong game được biểu diễn bằng struct Position, đơn vị đều là cell. Tất cả các thực thể trong game như rắn, thức ăn đều sử dụng Position chứ không sử dụng trực tiếp số pixel.
+```
+struct Position {
+    int16_t x; # nằm trong [0, GRID_WIDTH)
+    int16_t y; # nằm trong [0, GRID_HEIGHT)
+};
+```
+
+Hướng di chuyển của rắn được biểu diễn bằng enum SnakeDirection:
+```
+enum SnakeDirection
+{
+    SNAKE_DIR_UP = 0,
+    SNAKE_DIR_DOWN,
+    SNAKE_DIR_LEFT,
+    SNAKE_DIR_RIGHT
+};
+```
+
+Để đơn giản, thân rắn được biểu diễn bằng một mảng tĩnh, không sử dụng linked list hay container động:
+```
+Position snake[MAX_SNAKE_LENGTH]; # snake[0] là đầu rắn, phần tử thứ i là vị trí đốt thứ i của rắn
+uint8_t snakeLength; # số đốt rắn hiện tại, không bao giờ vượt quá MAX_SNAKE_LENGTH
+```
+
+Hướng di chuyển của rắn được lưu trữ như sau, với mục đích để tránh đổi hướng 180 độ và đồng bộ input với nhịp update của game:
+```
+SnakeDirection currentDirection; # hướng thực sự được áp dụng khi update
+SnakeDirection nextDirection; # hướng nhận được từ input
+```
+
+Thức ăn được lưu trữ như phía dưới. BigFood chiếm 2x2 ô, thời gian xuất hiện được đo bằng ```Snake_GetTickMs()``` nhằm tính điểm thưởng (BigFood xuất hiện càng lâu trước khi ăn thì được càng ít điểm):
+```
+Position food;
+Position bigFood;
+bool bigFoodActive;
+uint32_t bigFoodStartTime;
+```
+
+#### 3.4.2. Các thuật toán chính
+
+Hàm trung tâm của thuật toán là ```bool SnakeGame::update()```, được gọi định kỳ từ game loop (Screen2View). Hàm này thực hiện các công việc sau
+
+  - Kiểm tra trạng thái kết thúc game (nếu game over thì không cập nhật thêm).
+  - Áp dụng hướng điều khiển (```currentDirection = nextDirection```). Hướng mới chỉ được áp dụng tại thời điểm update, không áp dụng ngay khi nhấn nút.
+  - Di chuyển rắn (```moveSnake()```):
+    + Di chuyển đầu rắn theo ```currentDirection```. Nếu vượt biên thì wrap-around sang phía đối diện chứ không chết vì tường.
+    + Dịch thân rắn: Mỗi đốt lấy vị trí của đốt trước đó, thực hiện bằng cách sao chép tuần tự trong mảng ```snake```.
+  - Cập nhật trạng thái BigFood theo thời gian (```updateBigFood()```):
+    + Nếu thời gian tồn tại vượt quá ```BIGFOOD_DURATION_MS``` thì BigFood bị hủy, không cho ăn nữa.
+  - Kiểm tra va chạm với BigFood (so sánh `snake[0]` với 4 ô BigFood chiếm), rồi kiểm tra va chạm với food thường (so sánh `snake[0]` với vị trí food thường). Nếu có va chạm thì
+    + Tăng chiều dài snake bằng ```growSnake()```, với điều kiện không vượt quá ```MAX_SNAKE_LENGTH```. 
+    + Tính điểm theo độ khó game (nếu ăn food thường) hoặc theo thời gian BigFood xuất hiện (nếu ăn BigFood).
+    + Bật âm thanh ăn food thường hoặc BigFood.
+  - Kiểm tra va chạm thân rắn bằng cách so sánh `snake[0]` với `snake[1..snakeLength-1]`. Nếu có thì chuyển trạng thái Game over.
+
+Các food thường và BigFood được sinh ngẫu nhiên và đảm bảo không chạm vào rắn, trên màn hình luôn chỉ có 1 food thường. Mỗi BigFood chỉ được sinh ra nếu rắn đã ăn đủ 5 food thường liên tiếp.
+
+#### 3.4.3. Cung cấp dữ liệu cho tầng hiển thị
+```SnakeGame``` không vẽ trực tiếp, mà cung cấp dữ liệu cho View thông qua các getter:
+  - ```snake[i], snakeLength```
+  - ```getSegmentDirection(i)```
+  - ```food, bigFood, bigFoodActive```
+  - ```score, gameOver```
+  - ```pendingSound```
+
+View sử dụng các dữ liệu này để chọn bitmap phù hợp, đặt vị trí hiển thị và phát âm thanh phù hợp.
+
+
+---
+
+## 4. Giao Diện Đồ Họa & Assets
+
+### 4.1. Bitmap Assets
+**Vị trí**: `Snake/TouchGFX/assets/images/`
+
+| File Name       | Size    | Usage                              |
+|----------------|----------|------------------------------------|
+| Head.png       | 10x10    | Snake head (UP direction)          |
+| Head1.png      | 10x10    | Snake head (RIGHT direction)       |
+| Head2.png      | 10x10    | Snake head (DOWN direction)        |
+| Head3.png      | 10x10    | Snake head (LEFT direction)        |
+| Mid.png        | 10x10    | Snake body (vertical segment)      |
+| Mid1.png       | 10x10    | Snake body (horizontal segment)    |
+| Tail.png       | 10x10    | Snake tail (pointing UP)           |
+| Tail1.png      | 10x10    | Snake tail (pointing RIGHT)        |
+| Tail2.png      | 10x10    | Snake tail (pointing DOWN)         |
+| Tail3.png      | 10x10    | Snake tail (pointing LEFT)         |
+| Turn.png       | 10x10    | Turn segment (LEFT→UP)             |
+| Turn1.png      | 10x10    | Turn segment (DOWN→RIGHT)          |
+| Turn2.png      | 10x10    | Turn segment (RIGHT→DOWN)          |
+| Turn3.png      | 10x10    | Turn segment (UP→LEFT)             |
+| Food.png       | 10x10    | Normal food                        |
+| BigFood.png    | 20x20    | BigFood (2x2 cells)                |
+
+### 4.2. Rendering Pipeline
+```
+LTDC (Layer 0) ← DMA2D ← Frame Buffer (SDRAM @ 240x320x2 bytes = 150KB)
+                          ↑
+                    TouchGFX Renderer
+                          ↑
+                    Widget invalidate() calls
+                          ↑
+                    View::handleTickEvent()
+```
+
+- **Frame Buffer**: Single buffering (không double-buffer do SDRAM limited)
+- **DMA2D Acceleration**: Sử dụng cho bitmap blitting, color fill
+- **TouchGFX Partial Updates**: Chỉ redraw khu vực invalidated (optimize performance)
