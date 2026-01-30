@@ -483,6 +483,7 @@ Lần khởi động tiếp theo:
 2. Kiểm tra dữ liệu hợp lệ
     - nếu hợp lệ thì sử dụng highScore đã lưu.
     - nếu không hợp lệ thì highScore = 0 (first boot hoặc corrupted data)
+<<<<<<< HEAD
 ```
 
 ---
@@ -609,3 +610,6 @@ LTDC (Layer 0) ← DMA2D ← Frame Buffer (SDRAM @ 240x320x2 bytes = 150KB)
 - **Frame Buffer**: Single buffering (không double-buffer do SDRAM limited)
 - **DMA2D Acceleration**: Sử dụng cho bitmap blitting, color fill
 - **TouchGFX Partial Updates**: Chỉ redraw khu vực invalidated (optimize performance)
+=======
+```
+>>>>>>> 2fe659a34a9baece487fc9d991c92d28a767add6
