@@ -1079,6 +1079,11 @@ void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
+
+  /* Variables for highscore reset detection */
+  static uint32_t allButtonsPressedTime = 0;
+  const uint32_t RESET_HOLD_TIME_MS = 3000; /* Hold all buttons for 3 seconds to reset */
+
   for (;;)
   {
     /* Read button states (buttons are active LOW with pull-up) */
@@ -1087,6 +1092,47 @@ void StartDefaultTask(void *argument)
     int btnDown = (HAL_GPIO_ReadPin(BTN_DOWN_GPIO_Port, BTN_DOWN_Pin) == GPIO_PIN_RESET) ? 1 : 0;
     int btnLeft = (HAL_GPIO_ReadPin(BTN_LEFT_GPIO_Port, BTN_LEFT_Pin) == GPIO_PIN_RESET) ? 1 : 0;
     int btnRight = (HAL_GPIO_ReadPin(BTN_RIGHT_GPIO_Port, BTN_RIGHT_Pin) == GPIO_PIN_RESET) ? 1 : 0;
+
+    /* Check if all 4 buttons are pressed simultaneously to reset highscore */
+    if (btnUp && btnDown && btnLeft && btnRight)
+    {
+      if (allButtonsPressedTime == 0)
+      {
+        /* Start timing */
+        allButtonsPressedTime = HAL_GetTick();
+      }
+      else if ((HAL_GetTick() - allButtonsPressedTime) >= RESET_HOLD_TIME_MS)
+      {
+        /* All buttons held for 3 seconds - reset highscore */
+        FlashStorage_EraseAll();
+
+        /* Play buzzer to confirm reset */
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
+        HAL_Delay(200);
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+        HAL_Delay(100);
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
+        HAL_Delay(200);
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+
+        /* Reset timer */
+        allButtonsPressedTime = 0;
+
+        /* Wait for buttons to be released */
+        while (HAL_GPIO_ReadPin(BTN_UP_GPIO_Port, BTN_UP_Pin) == GPIO_PIN_RESET ||
+               HAL_GPIO_ReadPin(BTN_DOWN_GPIO_Port, BTN_DOWN_Pin) == GPIO_PIN_RESET ||
+               HAL_GPIO_ReadPin(BTN_LEFT_GPIO_Port, BTN_LEFT_Pin) == GPIO_PIN_RESET ||
+               HAL_GPIO_ReadPin(BTN_RIGHT_GPIO_Port, BTN_RIGHT_Pin) == GPIO_PIN_RESET)
+        {
+          osDelay(50);
+        }
+      }
+    }
+    else
+    {
+      /* Reset timer if not all buttons pressed */
+      allButtonsPressedTime = 0;
+    }
 
     /* Update TouchGFX Model with button states */
     Snake_UpdateButtonStates(btnUp, btnDown, btnLeft, btnRight);
