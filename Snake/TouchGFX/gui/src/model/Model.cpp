@@ -431,6 +431,8 @@ extern "C"
 Model::Model()
     : modelListener(0), buttonUp(false), buttonDown(false), buttonLeft(false), buttonRight(false), prevButtonUp(false), prevButtonDown(false), prevButtonLeft(false), prevButtonRight(false), highScore(0), lastScore(0)
 {
+    // Load high score from Flash storage at startup
+    loadHighScoreFromFlash();
 }
 
 void Model::tick()
@@ -478,5 +480,13 @@ void Model::saveGameScore(uint16_t score)
     if (score > highScore)
     {
         highScore = score;
+        // Save new high score to Flash storage (persists across resets)
+        Snake_SaveHighScore(score);
     }
+}
+
+void Model::loadHighScoreFromFlash()
+{
+    // Load high score from Flash storage
+    highScore = Snake_LoadHighScore();
 }

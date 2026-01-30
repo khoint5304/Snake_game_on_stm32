@@ -53,11 +53,14 @@
 ENTRY(Reset_Handler)
 
 /* Specify the memory areas */
+/* NOTE: FLASH reduced by 128K to reserve Sector 23 (0x081E0000-0x081FFFFF) */
+/*       for persistent storage (highscore, game settings) */
 MEMORY
 {
   CCMRAM    (xrw)    : ORIGIN = 0x10000000,   LENGTH = 64K
   RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 192K
-  FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 2048K
+  FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 1920K  /* 2048K - 128K reserved for storage */
+  STORAGE  (r)     : ORIGIN = 0x081E0000,  LENGTH = 128K   /* Sector 23: Persistent storage */
   SDRAM        (xrw)    : ORIGIN = 0xD0000000,   LENGTH = 8M
 }
 

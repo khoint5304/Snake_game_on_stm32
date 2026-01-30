@@ -2,6 +2,7 @@
 #define MODEL_HPP
 
 #include <gui/common/SnakeGame.hpp>
+#include <gui/common/SnakeInterface.h>
 
 class ModelListener;
 
@@ -33,6 +34,9 @@ public:
     uint16_t getHighScore() const { return highScore; }
     uint16_t getLastScore() const { return lastScore; }
     void saveGameScore(uint16_t score);
+
+    // Load high score from Flash storage (called at startup)
+    void loadHighScoreFromFlash();
 
 protected:
     ModelListener *modelListener;

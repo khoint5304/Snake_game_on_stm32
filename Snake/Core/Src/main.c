@@ -26,6 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include "Components/ili9341/ili9341.h"
 #include "audio_data.h"
+#include "flash_storage.h"
 
 /* Snake game button interface - declared in SnakeInterface.h */
 extern void Snake_UpdateButtonStates(int up, int down, int left, int right);
@@ -219,6 +220,10 @@ int main(void)
 
   /* Initialize simple audio module */
   SimpleAudio_Init(&htim7);
+
+  /* Initialize Flash storage for highscore persistence */
+  FlashStorage_Init();
+
   MX_TouchGFX_Init();
   /* Call PreOsInit function */
   MX_TouchGFX_PreOSInit();
@@ -1302,6 +1307,34 @@ void Snake_TestISD1820Play(void)
 }
 
 /* Snake_TestISD1820Record() removed - REC function not needed, audio already recorded */
+
+/**
+ * @brief  Initialize Flash storage for persistent data
+ * @retval None
+ */
+void Snake_InitStorage(void)
+{
+  FlashStorage_Init();
+}
+
+/**
+ * @brief  Load high score from Flash storage
+ * @retval High score value (0 if not found or corrupted)
+ */
+uint16_t Snake_LoadHighScore(void)
+{
+  return FlashStorage_LoadHighScore();
+}
+
+/**
+ * @brief  Save high score to Flash storage
+ * @param  score: High score value to save
+ * @retval None
+ */
+void Snake_SaveHighScore(uint16_t score)
+{
+  FlashStorage_SaveHighScore(score);
+}
 
 /**
  * @brief  Period elapsed callback in non blocking mode

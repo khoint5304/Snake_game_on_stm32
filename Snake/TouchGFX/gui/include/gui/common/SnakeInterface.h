@@ -59,6 +59,32 @@ extern "C"
 
     /* Snake_TestISD1820Record() removed - use REC button on module instead */
 
+    /**
+     * @brief Load high score from Flash storage
+     * @return High score value (0 if not found or corrupted)
+     *
+     * This function loads the high score from internal Flash memory.
+     * Data persists across resets and power cycles.
+     */
+    uint16_t Snake_LoadHighScore(void);
+
+    /**
+     * @brief Save high score to Flash storage
+     * @param score: High score value to save
+     *
+     * This function saves the high score to internal Flash memory.
+     * Only saves if the new score is higher than the stored one.
+     */
+    void Snake_SaveHighScore(uint16_t score);
+
+    /**
+     * @brief Initialize Flash storage system
+     *
+     * This should be called once at startup to initialize
+     * the Flash storage module.
+     */
+    void Snake_InitStorage(void);
+
 #ifdef __cplusplus
 }
 #endif
