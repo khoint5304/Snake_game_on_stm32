@@ -70,6 +70,11 @@
 			<locationURI>$%7BPARENT-1-PROJECT_LOC%7D/Core/Src/stm32f4xx_it.c</locationURI>
 		</link>
 		<link>
+			<name>Application/User/flash_storage.c</name>
+			<type>1</type>
+			<locationURI>$%7BPARENT-1-PROJECT_LOC%7D/Core/Src/flash_storage.c</locationURI>
+		</link>
+		<link>
 			<name>Drivers/CMSIS/system_stm32f4xx.c</name>
 			<type>1</type>
 			<locationURI>$%7BPARENT-1-PROJECT_LOC%7D/Core/Src/system_stm32f4xx.c</locationURI>
