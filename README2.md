@@ -1,8 +1,23 @@
 # Snake Game on STM32F429I-DISCO
 
-## 1. Tổng Quan Dự Án
+## 1. Giới thiệu
+
+### 1.1. Tổng Quan Dự Án
 
 Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board sử dụng TouchGFX framework để tạo giao diện đồ họa. Đây là một trò chơi rắn săn mồi cổ điển với các tính năng nâng cao như nhiều cấp độ khó, BigFood có thời gian giới hạn, hiệu ứng âm thanh, và lưu trữ điểm cao vào Flash memory.
+
+### 1.2. Video
+
+Please insert link here
+
+### 1.3. Phân công công việc
+
+| Thành viên        | Mã số sinh viên  | Công việc                         |
+|-------------------|------------------|-----------------------------------|
+| Nguyễn Thái Khôi  | 20224868         | Lắp đặt phần cứng, xử lý đồ họa   |
+| Đào Phúc Long     | 20220034         | Xử lý logic game                  |
+| Vũ Tùng Lâm       | 20225140         | Xử lý âm thanh                    |
+
 
 ## 2. Thiết Kế Phần Cứng (Hardware Design)
 
@@ -25,10 +40,7 @@ Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board s�
 #### Ngoại Vi Chính
 - **LTDC** (LCD-TFT Display Controller) - để hiển thị
 - **DMA2D** - hardware graphics acceleration
-- **I2C3** - touch controller (STMPE811)
-- **SPI5** - gyroscope (L3GD20)
 - **FMC** - SDRAM interface
-- **TIM7** - audio playback timer
 - **GPIO** - buttons và audio output
 
 ---
@@ -260,48 +272,6 @@ CAS Latency: 3 CLK @ 90 MHz (divided from 180 MHz AHB)
 - End Address: 0xD07FFFFF (8MB)
 - TouchGFX Frame Buffer: 0xD0000000 (150 KB)
 
-#### 2.6.4. TIM7 (Timer 7 - Audio Timer)
-
-**Mục đích**: Generate audio playback timing (không dùng trong version cuối)
-
-**Cấu hình**:
-- **Clock Source**: APB1 Timer Clock = 90 MHz
-- **Prescaler**: 89 (90 MHz / 90 = 1 MHz)
-- **Period (ARR)**: 124 (1 MHz / 125 = 8 kHz sample rate)
-- **Interrupt**: Every 125 μs (8 kHz)
-
-**Tính toán**:
-```
-Timer Clock = APB1 Clock = 90 MHz
-After Prescaler = 90 MHz / 90 = 1 MHz
-Period = (ARR + 1) = 125
-Output Frequency = 1 MHz / 125 = 8 kHz
-Output Period = 125 μs
-```
-
-**Usage Note**: 
-- Dùng cho software PWM (không phải direct audio output)
-- Trong version hiện tại, audio dùng ISD1820 module (pre-recorded)
-- TIM7 không được sử dụng (có thể dùng cho future features)
-
-#### 2.6.5. I2C3 (Touch Controller)
-
-**Mục đích**: Giao tiếp với touch screen controller STMPE811
-
-**Cấu hình**:
-- **Clock Speed**: 100 kHz (Standard mode) hoặc 400 kHz (Fast mode)
-- **Device Address**: 0x41 (7-bit) hoặc 0x82 (8-bit shifted)
-- **Usage**: Đọc tọa độ touch từ LCD panel
-
-#### 2.6.6. SPI5 (Gyroscope)
-
-**Mục đích**: Giao tiếp với con quay hồi chuyển L3GD20
-
-**Cấu hình**:
-- **Clock Speed**: 1 MHz - 10 MHz
-- **Device**: L3GD20 3-axis gyroscope
-- **Usage**: Cảm biến chuyển động (không dùng trong game hiện tại)
-
 ---
 
 ### 2.7. Các Thông Số Tính Toán
@@ -392,15 +362,13 @@ Sleep Mode (if implemented):
 
 ---
 
-### 3.2. Kiến Trúc Phần Mềm
-
-#### 3.2.1. Cấu Trúc Tổng Thể (MVP Pattern)
+### 3.2. Cấu Trúc Tổng Thể (MVP Pattern)
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                    main.c (C)                       │
 │  - Hardware Initialization                          │
-│  - FreeRTOS Tasks                                   │
+│  - FreeRTOS scheduler                               │
 │  - GPIO Button Polling (defaultTask)                │
 │  - Flash Storage Management                         │
 │  - Audio Hardware Control                           │
@@ -408,7 +376,7 @@ Sleep Mode (if implemented):
                    │ extern "C" interface
                    ▼
 ┌─────────────────────────────────────────────────────┐
-│          SnakeInterface.h/cpp (C/C++ Bridge)        │
+│          SnakeInterface.h (API declaration)         │
 │  - Snake_UpdateButtonStates()                       │
 │  - Snake_PlayBuzzer()                               │
 │  - Snake_PlayMusic()                                │
@@ -419,10 +387,20 @@ Sleep Mode (if implemented):
                    ▼
 ┌─────────────────────────────────────────────────────┐
 │              Model.hpp/cpp (C++)                    │
-│  - SnakeGame instance                               │
-│  - Button states management                         │
-│  - High score tracking (RAM + Flash)                │
-│  - tick() - event distribution to Views             │
+│  1) Model                                           │
+│     - Lưu trạng thái button                         │
+│     - Edge detection trong tick()                   │
+│     - Gọi ModelListener::buttonPressed()            │
+│     - Lưu lastScore, highScore                      │
+│                                                     │
+│  2) SnakeGame (logic game thuần)                    │
+│     - Di chuyển rắn                                 │
+│     - Va chạm, food, big food                       │
+│     - Score, difficulty                             │
+│     - Sinh sound event                              │
+│                                                     │
+│  3) SnakeInterface implementation                   │
+│     - Bridge từ main.c sang Model                   │
 └──────────────────┬──────────────────────────────────┘
                    │ MVP: Model ↔ Presenter ↔ View
                    ▼
@@ -441,4 +419,68 @@ Sleep Mode (if implemented):
 │  - Screen2: Game play                               │
 │  - Screen3: Game Over + Scores                      │
 └─────────────────────────────────────────────────────┘
+```
+
+Để đơn giản hoá project, nhóm gộp implementation của SnakeGame và SnakeInterface vào Model.cpp. Về mặt kiến trúc, đây không phải cách tổ chức tối ưu, nhưng với project này việc gộp giúp giảm số lượng file và đơn giản hóa việc debug trên hệ nhúng.
+
+---
+
+### 3.3. Luồng hoạt động của hệ thống
+
+#### 3.3.1. Khởi Động Hệ Thống
+```
+1. main() → HAL_Init() → SystemClock_Config()
+2. Peripheral Init: GPIO, LTDC, DMA2D, FMC SDRAM
+3. FlashStorage_Init()
+4. FreeRTOS osKernelInitialize()
+5. Create Tasks:
+   - defaultTask (button polling, buzzer control)
+   - GUI_Task (TouchGFX rendering 60 FPS)
+6. osKernelStart() → RTOS scheduler running
+7. TouchGFX init → Model() constructor → loadHighScoreFromFlash()
+8. Screen1View (Menu) hiển thị
+```
+
+#### 3.3.2. Game Loop (Screen2)
+```
+defaultTask (mỗi 20ms):
+1. Đọc trạng thái GPIO của các nút điều khiển (PD4-PD7, active LOW with pull-up)
+2. Debouncing check
+3. Snake_UpdateButtonStates() → Model.updateButtonStates()
+4. Update buzzer GPIO (PG13) nếu buzzerEndTick expired
+5. Nếu cả 4 nút được giữ trong 3 giây → FlashStorage_EraseAll()
+
+GUI_Task / Screen2View::handleTickEvent() (mỗi ~16.67ms @ 60 FPS):
+1. tickCounter++
+2. if (tickCounter >= getTickInterval()) {
+   3. game->update():
+      a. moveSnake() - di chuyển head, body theo sau
+      b. Check food collision:
+         - Normal food: score += difficulty points, spawnFood()
+         - BigFood: score += time-based points (500 → 0)
+      c. checkCollision() - tự va chạm → game over
+      d. updateBigFood() - check 5-second timer expiration
+   4. updateSnakeDisplay() - render snake với đúng bitmap
+   5. updateFoodDisplay() - cập nhật hiển thị thức ăn
+   6. updateBigFoodDisplay()
+   7. updateScoreDisplay() - cập nhật hiển thị điểm số
+   8. Reset tickCounter = 0
+}
+3. handleSoundEvent() - kích hoạt buzzer/ISD1820
+4. Nếu phát hiện trạng thái Game Over → gotoScreen3() - chuyển sang Screen3 sau 1 giây.
+```
+
+#### 3.3.3. High Score Persistence
+```
+Game Over:
+1. Screen2View phát hiện trạng thái Game Over
+2. Gửi điểm số hiện tại về Model
+3. Model::saveGameScore(score): Nếu score > highScore thì cập nhật highScore trong Flash.
+4. Chuyển sang Screen3 hiển thị điểm ván vừa chơi, highScore.
+
+Lần khởi động tiếp theo:
+1. FlashStorage_Init() → ReadDataFromFlash()
+2. Kiểm tra dữ liệu hợp lệ
+    - nếu hợp lệ thì sử dụng highScore đã lưu.
+    - nếu không hợp lệ thì highScore = 0 (first boot hoặc corrupted data)
 ```
