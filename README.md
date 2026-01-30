@@ -511,13 +511,12 @@ LTDC (Layer 0) ← DMA2D ← Frame Buffer (SDRAM @ 240x320x2 bytes = 150KB)
 
 **Button Wiring**:
 ```
-STM32 PD4-7 (with internal pull-up) ──┬── Button ── GND
-                                       └── 10kΩ (optional external)
+STM32 PD4-7 (with internal pull-up) ──── Button ── GND
 ```
 
 **Buzzer Wiring**:
 ```
-STM32 PG13 ── 1kΩ resistor ── Buzzer (+) ── Buzzer (-) ── GND
+STM32 PG13 ── Buzzer (+) ── Buzzer (-) ── GND
 ```
 
 **ISD1820 Wiring**:
@@ -528,7 +527,7 @@ GND  ───────────── GND
 PLAY-L ───────────── PD12
 SP+/SP- ──────────── Speaker
 REC  ───────────── Manual record button on module
-MIC  ───────────── Microphone input (for recording only)
+MIC  ───────────── Microphone input
 ```
 
 ### 5.2. Memory Map
@@ -574,61 +573,7 @@ HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
     LTDC, DMA2D   I2C3         TIM7, SPI5
 ```
 
-### 5.4. Peripheral Configuration
 
-**LTDC (LCD Controller)**:
-- **Timing**: 240x320 @ 60 Hz (pixel clock ~9.6 MHz)
-- **Color Format**: RGB565 (16-bit)
-- **Layer 0**: Frame buffer tại SDRAM, single buffering
-
-**DMA2D (Graphics Accelerator)**:
-- **Mode**: Memory-to-Memory with PFC (Pixel Format Conversion)
-- **Usage**: TouchGFX bitmap blitting, rectangle fills
-
-**FMC SDRAM Interface**:
-- **Bank**: Bank 2 (IS42S16400J)
-- **Data Width**: 16-bit
-- **CAS Latency**: 3 cycles
-- **Refresh Rate**: 64ms / 4096 rows = 15.625μs per row
-
-**TIM7 (Audio Timer)**:
-- **Prescaler**: 89 (90 MHz / 90 = 1 MHz)
-- **Period**: 124 (1 MHz / 125 = 8 kHz sample rate)
-- **Usage**: Software PWM audio playback (not used in final version)
-
-## 6. Build & Deployment
-
-### 6.1. Supported IDEs
-- **Primary**: STM32CubeIDE (GCC ARM toolchain)
-- **Secondary**: IAR EWARM 8.50.9+, Keil MDK-ARM
-
-### 6.2. Build Configuration
-**Debug Build**:
-- Optimization: `-Og` (debug-friendly)
-- Symbols: Enabled
-- Flash size: ~1.2 MB
-
-**Release Build**:
-- Optimization: `-O2` (size/speed balanced)
-- Symbols: Stripped
-- Flash size: ~800 KB
-
-### 6.3. Flashing
-**Via STM32CubeProgrammer**:
-1. Connect ST-Link USB
-2. Erase: Sector 0-22 only (preserves high score in Sector 23)
-3. Flash: `STM32F429I_DISCO_REV_D01.hex`
-4. Reset board
-
-**Full Chip Erase** (reset high score):
-```
-STM32CubeProgrammer → Erasing & Programming → Full Chip Erase → Program
-```
-
-### 6.4. TouchGFX Designer Integration
-- Flashing directly from TouchGFX Designer supported
-- Requires STM32CubeProgrammer installed
-- Build script: `Snake/TouchGFX/target/target.config`
 
 ## 7. Các Tính Năng Nâng Cao
 
@@ -682,7 +627,6 @@ STM32CubeProgrammer → Erasing & Programming → Full Chip Erase → Program
 
 ### 8.1. Performance Metrics
 - **Frame Rate**: 60 FPS (stable)
-- **CPU Usage**: ~40-50% during gameplay (measured via MCU_ACTIVE pin PE5)
 - **Memory**:
   - Stack: defaultTask 512 bytes, GUI_Task 32 KB
   - Heap: ~200 KB (TouchGFX assets cache)
@@ -704,99 +648,8 @@ STM32CubeProgrammer → Erasing & Programming → Full Chip Erase → Program
 - GUI_Task: Normal priority (rendering không bị starve)
 - defaultTask: Normal priority (button polling đủ nhanh @ 20ms)
 
-### 8.3. Debug GPIO Signals
-- **PE2 (VSYNC_FREQ)**: VSYNC frequency measurement
-- **PE3 (RENDER_TIME)**: Frame render time
-- **PE4 (FRAME_RATE)**: Actual frame rate
-- **PE5 (MCU_ACTIVE)**: CPU activity indicator
 
-## 9. Troubleshooting
-
-### 9.1. Common Issues
-
-**Problem**: High score không lưu sau reset
-- **Cause**: Flash write failed hoặc checksum corrupted
-- **Solution**: Check `FlashStorage_SaveHighScore()` return status, verify Sector 23 không bị write-protected
-
-**Problem**: Snake rendering lag
-- **Cause**: Too many dynamic Image objects (>100 segments)
-- **Solution**: Giới hạn `MAX_SNAKE_LENGTH = 100`, optimize invalidation area
-
-**Problem**: Buttons không responsive
-- **Cause**: Debouncing delay quá dài hoặc GPIO config sai
-- **Solution**: Verify PD4-7 config = Input + Pull-up, check polling frequency (should be ~20ms)
-
-**Problem**: Audio không phát
-- **Cause**: ISD1820 wiring sai hoặc không có audio recorded
-- **Solution**: 
-  1. Test ISD1820 bằng `Snake_TestISD1820Play()` trong main loop
-  2. Verify PD12 pulse (scope: should see 100ms LOW pulse)
-  3. Re-record audio using REC button on ISD1820 module
-
-**Problem**: Screen flickering
-- **Cause**: Frame buffer conflict, double-buffering disabled
-- **Solution**: Ensure `invalidate()` gọi sau khi update tất cả widgets, không update trong interrupt
-
-### 9.2. Testing Procedures
-
-**Unit Test - Snake Movement**:
-```cpp
-SnakeGame game;
-game.reset();
-assert(game.getSnakeHead().x == 12);  // Center of 24-wide grid
-assert(game.getSnakeHead().y == 14);  // Center of 28-tall grid
-game.setDirection(SNAKE_DIR_RIGHT);
-game.update();
-assert(game.getSnakeHead().x == 13);  // Moved right
-```
-
-**Integration Test - High Score**:
-1. Play game, achieve score > 0
-2. Reset board (hardware reset button)
-3. Check Screen3 high score display matches previous game
-4. Hold all 4 buttons for 3 seconds → reset high score
-5. Verify high score = 0 after reset
-
-**Hardware Test - ISD1820**:
-1. Flash code với `Snake_TestISD1820Play()` uncommented
-2. Observe speaker output (should hear pre-recorded audio)
-3. Measure PD12 với oscilloscope (expect ~100ms LOW pulse)
-
-## 10. Future Enhancements
-
-### 10.1. Potential Features
-- [ ] Multiplayer mode (2 snakes với shared food)
-- [ ] Obstacle blocks (static walls trong game area)
-- [ ] Power-ups (speed boost, invincibility)
-- [ ] Pause/Resume functionality
-- [ ] Difficulty auto-scaling (tăng tốc khi điểm cao)
-- [ ] Animation effects (smooth movement interpolation)
-- [ ] Touch screen control (swipe gestures)
-- [ ] Online leaderboard (via USB/UART)
-
-### 10.2. Performance Improvements
-- [ ] Double-buffering (giảm tearing, cần ~300KB SDRAM)
-- [ ] Hardware RNG cho food spawning (STM32F4 có RNG peripheral)
-- [ ] Compressed bitmap storage (giảm SDRAM usage)
-- [ ] DMA-based button reading (free up CPU)
-
-## 11. References & Documentation
-
-### 11.1. Technical Documents
-- [STM32F429ZI Datasheet](https://www.st.com/resource/en/datasheet/stm32f429zi.pdf)
-- [STM32F429I-DISCO User Manual](https://www.st.com/resource/en/user_manual/um1670-discovery-kit-with-stm32f429zi-mcu-stmicroelectronics.pdf)
-- [TouchGFX Documentation](https://support.touchgfx.com/4.26/docs/introduction/welcome)
-- [FreeRTOS Documentation](https://www.freertos.org/Documentation/RTOS_book.html)
-- [ILI9341 LCD Driver](https://www.displayfuture.com/Display/datasheet/controller/ILI9341.pdf)
-
-### 11.2. Related Files
-- [HIGHSCORE_STORAGE.md](Snake/HIGHSCORE_STORAGE.md) - Flash storage chi tiết
-- [AUDIO_IMPLEMENTATION.md](AUDIO_IMPLEMENTATION.md) - Audio system guide
-- [BURN_AUDIO_TO_ISD1820.md](BURN_AUDIO_TO_ISD1820.md) - ISD1820 recording guide
-- [ISD1820_DEBUG_GUIDE.md](ISD1820_DEBUG_GUIDE.md) - Audio debugging
-- [changelog.txt](Snake/changelog.txt) - Version history
-
-### 11.3. Source Code Structure
+## 11. Source Code Structure
 ```
 Snake_game_on_stm32/
 ├── README.md                          # This file
@@ -836,25 +689,3 @@ Snake_game_on_stm32/
 └── wav_to_c_array.py                  # Audio conversion tool (unused)
 ```
 
-## 12. License & Credits
-
-### 12.1. Software Components
-- **STM32CubeMX**: © STMicroelectronics (SLA0044 License)
-- **TouchGFX**: © STMicroelectronics (SLA0044 License)
-- **FreeRTOS**: MIT License
-- **HAL Drivers**: © STMicroelectronics (BSD 3-Clause)
-
-### 12.2. Project Team
-- Snake Game Logic: Custom implementation
-- TouchGFX Integration: Based on ST's application templates
-- Flash Storage Module: Custom implementation
-- Audio System: Custom ISD1820 driver
-
-### 12.3. Version
-- **Current Version**: 3.0.24 (STM32CubeMX 6.16.0, TouchGFX 4.26.0, FW_F4 v1.28.3)
-- **Project Start**: Based on TouchGFX 3.0.5 template
-- **Last Updated**: 2026 (per changelog)
-
----
-
-**Tài liệu này mô tả chi tiết, đầy đủ và khách quan về cấu trúc, logic, thuật toán và cách thức hoạt động của Snake Game trên STM32F429I-DISCO board. Mọi thông tin đều dựa trên source code thực tế và không chứa giả định cá nhân.**
