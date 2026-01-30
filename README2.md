@@ -7,8 +7,7 @@
 Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board sử dụng TouchGFX framework để tạo giao diện đồ họa. Đây là một trò chơi rắn săn mồi cổ điển với các tính năng nâng cao như nhiều cấp độ khó, BigFood có thời gian giới hạn, hiệu ứng âm thanh, và lưu trữ điểm cao vào Flash memory.
 
 ### 1.2. Video
-
-Please insert link here
+https://drive.google.com/file/d/1BhU21fq4jr-rzdMzTyC-0GziRqEoxL7-/view?fbclid=IwY2xjawPpv0xleHRuA2FlbQIxMABicmlkETF4M3BQT0hRVURDSmwzQmtsc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABHrAdjCwk-T-iZcFjSnMEpeDpeRSCiv-ih8PZggXmph4j1AlvZDUTGCEZEb22_aem_1nd4Gb6vjtS2-7_FIkGkaQ
 
 ### 1.3. Phân công công việc
 
@@ -610,6 +609,5 @@ LTDC (Layer 0) ← DMA2D ← Frame Buffer (SDRAM @ 240x320x2 bytes = 150KB)
 - **Frame Buffer**: Single buffering (không double-buffer do SDRAM limited)
 - **DMA2D Acceleration**: Sử dụng cho bitmap blitting, color fill
 - **TouchGFX Partial Updates**: Chỉ redraw khu vực invalidated (optimize performance)
-=======
 ```
->>>>>>> 2fe659a34a9baece487fc9d991c92d28a767add6
+=======
