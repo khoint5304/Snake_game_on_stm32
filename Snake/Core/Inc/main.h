@@ -85,11 +85,11 @@ extern "C"
 #define BTN_RIGHT_GPIO_Port GPIOD
 
 /* ISD1820 Audio Module Definitions */
-/* Using PE9 and PE10 for ISD1820 control */
-#define ISD1820_PLAY_Pin GPIO_PIN_9
-#define ISD1820_PLAY_GPIO_Port GPIOE
-#define ISD1820_REC_Pin GPIO_PIN_10
-#define ISD1820_REC_GPIO_Port GPIOE
+/* Using PD12 for ISD1820 PLAY-L control (active LOW pulse to play) */
+/* Note: PE9/PE10 are used for FMC SDRAM, so we use PD12/PD13 instead */
+#define ISD1820_PLAY_Pin GPIO_PIN_12
+#define ISD1820_PLAY_GPIO_Port GPIOD
+  /* PD13 is reserved but not needed for basic playback - only PLAY-L is required */
 
   /* USER CODE END Private defines */
 

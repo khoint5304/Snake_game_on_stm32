@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Components/ili9341/ili9341.h"
+#include "audio_data.h"
 
 /* Snake game button interface - declared in SnakeInterface.h */
 extern void Snake_UpdateButtonStates(int up, int down, int left, int right);
@@ -34,7 +35,24 @@ static volatile uint32_t buzzerEndTick = 0;
 
 /* ISD1820 Audio Module control variables */
 static volatile uint32_t musicPlayEndTick = 0;
-#define ISD1820_PLAY_PULSE_MS 2 /* Pulse duration for play button (2ms) */
+#define ISD1820_PLAY_PULSE_MS 100 /* Pulse duration for play button (100ms) */
+
+/* ========== Simple Audio Playback (Embedded Implementation) ========== */
+typedef struct
+{
+  const uint8_t *data;
+  uint32_t size;
+  uint32_t position;
+  uint32_t sample_rate;
+  uint8_t channels;
+  uint8_t bits_per_sample;
+  uint8_t is_playing;
+  uint32_t sample_skip;
+} AudioState_t;
+
+static AudioState_t audio_state = {0};
+static TIM_HandleTypeDef *htim_audio_ptr = NULL;
+/* ====================================================================== */
 
 /* USER CODE END Includes */
 
@@ -85,6 +103,8 @@ SPI_HandleTypeDef hspi5;
 
 SDRAM_HandleTypeDef hsdram1;
 
+TIM_HandleTypeDef htim7;
+
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
@@ -112,6 +132,7 @@ static void MX_SPI5_Init(void);
 static void MX_FMC_Init(void);
 static void MX_LTDC_Init(void);
 static void MX_DMA2D_Init(void);
+static void MX_TIM7_Init(void);
 void StartDefaultTask(void *argument);
 extern void TouchGFX_Task(void *argument);
 
@@ -141,6 +162,13 @@ void IOE_Delay(uint32_t Delay);
 void IOE_Write(uint8_t Addr, uint8_t Reg, uint8_t Value);
 uint8_t IOE_Read(uint8_t Addr, uint8_t Reg);
 uint16_t IOE_ReadMultiple(uint8_t Addr, uint8_t Reg, uint8_t *pBuffer, uint16_t Length);
+
+/* SimpleAudio function prototypes */
+int SimpleAudio_Init(TIM_HandleTypeDef *htim);
+int SimpleAudio_PlayGameOver(void);
+void SimpleAudio_Stop(void);
+int SimpleAudio_IsPlaying(void);
+void SimpleAudio_TimerCallback(TIM_HandleTypeDef *htim);
 
 /* USER CODE END PFP */
 
@@ -187,10 +215,27 @@ int main(void)
   MX_FMC_Init();
   MX_LTDC_Init();
   MX_DMA2D_Init();
+  MX_TIM7_Init();
+
+  /* Initialize simple audio module */
+  SimpleAudio_Init(&htim7);
   MX_TouchGFX_Init();
   /* Call PreOsInit function */
   MX_TouchGFX_PreOSInit();
   /* USER CODE BEGIN 2 */
+
+  /* ========== BURN AUDIO TO ISD1820 - RUN ONCE ========== */
+  /* IMPORTANT:
+   * 1. Connect: PE8 → 1kΩ resistor → ISD1820 MIC
+   * 2. Build and flash this code
+   * 3. Wait ~10 seconds, you'll hear audio playback test
+   * 4. After successful burn, COMMENT OUT the line below
+   * 5. Disconnect the PE8 → MIC wire
+   * 6. Rebuild and reflash
+   */
+  // Snake_BurnAudioToISD1820();  // ← COMMENTED OUT AFTER BURNING
+
+  /* ======================================================= */
 
   /* USER CODE END 2 */
 
@@ -570,6 +615,42 @@ static void MX_FMC_Init(void)
 }
 
 /**
+ * @brief TIM7 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM7_Init(void)
+{
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 89; // 90MHz / 90 = 1MHz
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 124; // 1MHz / 125 = 8kHz sample rate
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+}
+
+/**
  * @brief GPIO Initialization Function
  * @param None
  * @retval None
@@ -637,21 +718,23 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /* Configure Buzzer GPIO pin (PE8 as Output Push-Pull) */
-  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_RESET);
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  /* Configure Buzzer GPIO pin (PG13 as Output Push-Pull) */
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
-  /* Configure ISD1820 Audio Module GPIO pins (PE9, PE10 as Output Push-Pull) */
-  HAL_GPIO_WritePin(GPIOE, ISD1820_PLAY_Pin | ISD1820_REC_Pin, GPIO_PIN_SET);
-  GPIO_InitStruct.Pin = ISD1820_PLAY_Pin | ISD1820_REC_Pin;
+  /* Configure ISD1820 Audio Module GPIO pin (PD12 for PLAY-L, active LOW pulse) */
+  /* IMPORTANT: PE9/PE10 cannot be used - they are FMC SDRAM data lines! */
+  /* ISD1820 PLAY-L: Keep HIGH normally, pulse LOW to trigger playback */
+  HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_SET);
+  GPIO_InitStruct.Pin = ISD1820_PLAY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  HAL_GPIO_Init(ISD1820_PLAY_GPIO_Port, &GPIO_InitStruct);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
@@ -1006,22 +1089,144 @@ void StartDefaultTask(void *argument)
     /* Update buzzer state - turn off if duration elapsed */
     if (buzzerEndTick > 0 && HAL_GetTick() >= buzzerEndTick)
     {
-      HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
       buzzerEndTick = 0;
     }
 
-    /* Update ISD1820 PLAY pin state - release after pulse */
-    if (musicPlayEndTick > 0 && HAL_GetTick() >= musicPlayEndTick)
-    {
-      HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_SET);
-      musicPlayEndTick = 0;
-    }
+    /* ISD1820 PLAY pin is now controlled directly in Snake_PlayMusic() with HAL_Delay */
+    /* No need for timer-based release anymore */
 
     /* Delay for debouncing */
     osDelay(20);
   }
   /* USER CODE END 5 */
 }
+
+/* ==================== Simple Audio Implementation ==================== */
+
+/**
+ * @brief Initialize simple audio module
+ */
+int SimpleAudio_Init(TIM_HandleTypeDef *htim)
+{
+  if (htim == NULL)
+    return -1;
+
+  htim_audio_ptr = htim;
+  audio_state.is_playing = 0;
+  audio_state.position = 0;
+
+  return 0;
+}
+
+/**
+ * @brief Start playing game over audio
+ */
+int SimpleAudio_PlayGameOver(void)
+{
+  if (audio_state.is_playing)
+  {
+    return -1; /* Already playing */
+  }
+
+  /* Setup audio state */
+  audio_state.data = gameOverAudioData;
+  audio_state.size = gameOverAudioSize;
+  audio_state.position = 0;
+  audio_state.sample_rate = gameOverAudioSampleRate;
+  audio_state.channels = gameOverAudioChannels;
+  audio_state.bits_per_sample = gameOverAudioBitsPerSample;
+
+  /* Downsample 44100 Hz -> 8000 Hz */
+  audio_state.sample_skip = audio_state.sample_rate / 8000;
+  if (audio_state.sample_skip < 1)
+    audio_state.sample_skip = 1;
+
+  audio_state.is_playing = 1;
+
+  /* Start timer interrupt at 8kHz */
+  if (htim_audio_ptr != NULL)
+  {
+    htim_audio_ptr->Instance->PSC = 89;  /* 90MHz / 90 = 1MHz */
+    htim_audio_ptr->Instance->ARR = 124; /* 1MHz / 125 = 8kHz */
+    HAL_TIM_Base_Start_IT(htim_audio_ptr);
+  }
+
+  return 0;
+}
+
+/**
+ * @brief Stop audio playback
+ */
+void SimpleAudio_Stop(void)
+{
+  if (htim_audio_ptr != NULL)
+  {
+    HAL_TIM_Base_Stop_IT(htim_audio_ptr);
+  }
+
+  audio_state.is_playing = 0;
+  audio_state.position = 0;
+
+  /* Turn off buzzer */
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+}
+
+/**
+ * @brief Check if audio is playing
+ */
+int SimpleAudio_IsPlaying(void)
+{
+  return audio_state.is_playing;
+}
+
+/**
+ * @brief Timer callback for audio playback
+ */
+void SimpleAudio_TimerCallback(TIM_HandleTypeDef *htim)
+{
+  if (!audio_state.is_playing || htim != htim_audio_ptr)
+  {
+    return;
+  }
+
+  /* Check if we've reached the end */
+  if (audio_state.position >= audio_state.size)
+  {
+    SimpleAudio_Stop();
+    return;
+  }
+
+  /* Get current sample (16-bit) */
+  int16_t sample = 0;
+  if (audio_state.bits_per_sample == 16 && audio_state.position + 1 < audio_state.size)
+  {
+    /* Read 16-bit sample (little endian) */
+    sample = (int16_t)(audio_state.data[audio_state.position] |
+                       (audio_state.data[audio_state.position + 1] << 8));
+  }
+  else if (audio_state.position < audio_state.size)
+  {
+    /* 8-bit sample fallback */
+    sample = (int16_t)((audio_state.data[audio_state.position] - 128) << 8);
+  }
+
+  /* Simple 1-bit DAC: Turn on buzzer if sample > 0, off if < 0 */
+  if (sample > 0)
+  {
+    HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+  }
+
+  /* Advance position (with downsampling) */
+  uint32_t bytes_per_sample = audio_state.bits_per_sample / 8;
+  audio_state.position += bytes_per_sample * audio_state.sample_skip;
+}
+
+/* ====================================================================== */
 
 /**
  * @brief  Play buzzer for specified duration
@@ -1032,49 +1237,37 @@ void Snake_PlayBuzzer(int durationMs)
 {
   if (durationMs > 0)
   {
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
     buzzerEndTick = HAL_GetTick() + (uint32_t)durationMs;
   }
 }
 
 /**
- * @brief  Play music from ISD1820 audio module
+ * @brief  Play Game Over music via ISD1820 module
  * @retval None
  *
- * This function triggers the PLAY pin of ISD1820 with a 2ms pulse
- * to start playing the pre-recorded audio.
+ * WIRING FOR ISD1820:
+ *   - VCC  → 3.3V hoặc 5V
+ *   - GND  → GND
+ *   - P-L  → PD12 (PLAY-L: kéo LOW để phát)
+ *   - SP+  → Loa (+)
+ *   - SP-  → Loa (-)
+ *
+ * ISD1820 PLAY-L: Giữ HIGH bình thường, kéo LOW để trigger phát audio.
+ * Audio đã được ghi sẵn bằng nút REC trên module.
  */
 void Snake_PlayMusic(void)
 {
-  // Pull PLAY pin low for 2ms to trigger playback
+  // Trigger ISD1820 playback: Kéo PLAY-L xuống LOW trong ~100ms
   HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_RESET);
-  musicPlayEndTick = HAL_GetTick() + ISD1820_PLAY_PULSE_MS;
+  HAL_Delay(100); // Giữ LOW 100ms để đảm bảo ISD1820 nhận tín hiệu
+  HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_SET);
+  // Audio sẽ tự phát từ ISD1820, không cần chờ đợi
 }
 
-/**
- * @brief  Start recording audio to ISD1820
- * @retval None
- *
- * This function pulls the REC pin low to start recording.
- * Call Snake_StopRecording() to stop recording after the desired duration.
- */
-void Snake_StartRecording(void)
-{
-  // Pull REC pin low to start recording
-  HAL_GPIO_WritePin(ISD1820_REC_GPIO_Port, ISD1820_REC_Pin, GPIO_PIN_RESET);
-}
+/* Recording functions removed - audio is already recorded to ISD1820 module */
 
-/**
- * @brief  Stop recording audio to ISD1820
- * @retval None
- *
- * This function releases the REC pin (sets high) to stop recording.
- */
-void Snake_StopRecording(void)
-{
-  // Release REC pin (set high) to stop recording
-  HAL_GPIO_WritePin(ISD1820_REC_GPIO_Port, ISD1820_REC_Pin, GPIO_PIN_SET);
-}
+/* Snake_BurnAudioToISD1820() removed - audio is already recorded to ISD1820 module */
 
 /**
  * @brief  Get current system time in milliseconds
@@ -1084,6 +1277,31 @@ uint32_t Snake_GetTickMs(void)
 {
   return HAL_GetTick();
 }
+
+/**
+ * @brief  Test ISD1820 module - Play audio
+ * @retval None
+ *
+ * This is a debug/test function. Call this from main() or button press
+ * to verify ISD1820 hardware connection and recorded audio.
+ *
+ * Usage: Add Snake_TestISD1820Play() in main loop or button handler
+ */
+void Snake_TestISD1820Play(void)
+{
+  // Method 1: Short pulse (50ms)
+  HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_RESET);
+  HAL_Delay(50);
+  HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_SET);
+
+  /* Alternative Method 2: Try longer pulse if short doesn't work
+  HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_RESET);
+  HAL_Delay(100);
+  HAL_GPIO_WritePin(ISD1820_PLAY_GPIO_Port, ISD1820_PLAY_Pin, GPIO_PIN_SET);
+  */
+}
+
+/* Snake_TestISD1820Record() removed - REC function not needed, audio already recorded */
 
 /**
  * @brief  Period elapsed callback in non blocking mode
@@ -1103,6 +1321,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
+
+  /* Handle audio playback timer - call SimpleAudio callback */
+  SimpleAudio_TimerCallback(htim);
 
   /* USER CODE END Callback 1 */
 }
