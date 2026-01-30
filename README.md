@@ -1,24 +1,357 @@
 # Snake Game on STM32F429I-DISCO
 
-## 1. Tổng Quan Dự Án
+## 1. Giới thiệu
+
+### 1.1. Tổng Quan Dự Án
 
 Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board sử dụng TouchGFX framework để tạo giao diện đồ họa. Đây là một trò chơi rắn săn mồi cổ điển với các tính năng nâng cao như nhiều cấp độ khó, BigFood có thời gian giới hạn, hiệu ứng âm thanh, và lưu trữ điểm cao vào Flash memory.
 
-### Thông Số Kỹ Thuật Phần Cứng
-- **MCU**: STM32F429ZIT6 (ARM Cortex-M4, 180MHz)
-- **Display**: ILI9341 LCD 240x320 pixels, RGB565 (16-bit color)
-- **RAM**: 8MB External SDRAM (IS42S16400J) qua FMC interface
-- **Flash**: 2MB Internal Flash (Sector 0-22 cho code, Sector 23 cho data)
-- **Peripherals**: 
-  - LTDC (LCD-TFT Display Controller) cho hiển thị
-  - DMA2D cho hardware graphics acceleration
-  - I2C3 cho touch controller (STMPE811)
-  - SPI5 cho gyroscope (L3GD20)
-  - FMC SDRAM interface
-  - TIM7 cho audio playback timer
-  - GPIO cho buttons và audio output
+### 1.2. Video
+https://drive.google.com/file/d/1BhU21fq4jr-rzdMzTyC-0GziRqEoxL7-/view?fbclid=IwY2xjawPpv0xleHRuA2FlbQIxMABicmlkETF4M3BQT0hRVURDSmwzQmtsc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABHrAdjCwk-T-iZcFjSnMEpeDpeRSCiv-ih8PZggXmph4j1AlvZDUTGCEZEb22_aem_1nd4Gb6vjtS2-7_FIkGkaQ
 
-### Thông Số Kỹ Thuật Phần Mềm
+### 1.3. Phân công công việc
+
+| Thành viên        | Mã số sinh viên  | Công việc                         |
+|-------------------|------------------|-----------------------------------|
+| Nguyễn Thái Khôi  | 20224868         | Lắp đặt phần cứng, xử lý đồ họa   |
+| Đào Phúc Long     | 20220034         | Xử lý logic game                  |
+| Vũ Tùng Lâm       | 20225140         | Xử lý âm thanh                    |
+
+
+## 2. Thiết Kế Phần Cứng (Hardware Design)
+
+### 2.1. Thông Số Kỹ Thuật Phần Cứng
+
+#### Bộ Xử Lý và Bộ Nhớ
+- **MCU**: STM32F429ZIT6 (ARM Cortex-M4, 180MHz)
+- **Flash Memory**: 2MB Internal Flash
+  - Sector 0-22: Code + Constants (1920 KB)
+  - Sector 23: Persistent Data (128 KB) - dành cho High Score
+- **Internal RAM**: 192 KB
+- **External SDRAM**: 8MB (IS42S16400J) qua FMC interface
+
+#### Display
+- **Type**: ILI9341 LCD
+- **Resolution**: 240x320 pixels
+- **Color Format**: RGB565 (16-bit color)
+- **Interface**: LTDC (LCD-TFT Display Controller)
+
+#### Ngoại Vi Chính
+- **LTDC** (LCD-TFT Display Controller) - để hiển thị
+- **DMA2D** - hardware graphics acceleration
+- **FMC** - SDRAM interface
+- **GPIO** - buttons và audio output
+
+---
+
+### 2.2. GPIO Mapping
+
+| Pin   | Function        | Type    | Config          | Description                    |
+|-------|----------------|---------|-----------------|--------------------------------|
+| PD4   | BTN_UP         | Input   | Pull-up         | UP button (active LOW)          |
+| PD5   | BTN_DOWN       | Input   | Pull-up         | DOWN button (active LOW)        |
+| PD6   | BTN_LEFT       | Input   | Pull-up         | LEFT button (active LOW)        |
+| PD7   | BTN_RIGHT      | Input   | Pull-up         | RIGHT button (active LOW)       |
+| PG13  | BUZZER         | Output  | Push-pull       | Buzzer control (active HIGH)    |
+| PD12  | ISD1820_PLAY   | Output  | Push-pull       | ISD1820 PLAY-L (active LOW pulse)|
+| PC2   | LCD_CS         | Output  | Push-pull       | LCD chip select                 |
+| PD13  | LCD_WRX        | Output  | Push-pull       | LCD write/read select           |
+| PE2-5 | Debug GPIO     | Output  | Push-pull       | Performance testing pins        |
+
+---
+
+### 2.3. Sơ Đồ Dây Nối (Wiring Diagrams)
+
+#### 2.3.1. Nút Bấm
+```
+STM32 PD4-7 (with internal pull-up) ── Button ── GND
+```
+
+**Chi tiết**:
+- Tất cả 4 nút (UP, DOWN, LEFT, RIGHT) được cấu hình ở chế độ Input với Pull-up
+- Active LOW: Khi nhấn, GPIO đọc LOW (0), khi không nhấn đọc HIGH (1)
+- Debouncing: Polling mỗi 20ms trong defaultTask
+
+#### 2.3.2. Buzzer
+```
+STM32 PG13 ── Buzzer (+) ── Buzzer (-) ── GND
+```
+
+**Chi tiết**:
+- PG13 là output Push-pull
+- Buzzer hoạt động ở chế độ Active HIGH (PG13 = HIGH → buzzer phát âm)
+- Được dùng cho:
+  - Eat food: 100ms beep
+  - Eat BigFood: 300ms beep
+  - Game Over: 1000ms beep
+
+#### 2.3.3. ISD1820 Audio Module
+```
+ISD1820 Module     STM32F429I-DISCO
+VCC  ───────────── 3.3V or 5V
+GND  ───────────── GND
+PLAY-L ─────────── PD12
+SP+/SP- ────────── Speaker
+REC  ───────────── Manual record button on module
+MIC  ───────────── Microphone input (for recording only)
+```
+
+**Chi tiết**:
+- PD12 là output Push-pull
+- PLAY-L: Active LOW pulse trigger (100ms LOW pulse để phát)
+- Dùng để phát âm thanh game over (pre-recorded audio)
+- REC button trên module để recording thủ công
+- MIC input cho phép recording từ microphone
+
+---
+
+### 2.4. Bản Đồ Bộ Nhớ (Memory Map)
+
+#### 2.4.1. Flash Memory (2MB = 0x200000 bytes)
+```
+0x08000000 ─────────┐
+            ...     │ Sector 0-22: Code + Constants (1920 KB)
+0x081DFFFF ─────────┤
+0x081E0000 ─────────┐
+            ...     │ Sector 23: Persistent Data - High Score (128 KB)
+0x081FFFFF ─────────┘
+```
+
+**Sector 23 Layout** (0x081E0000 - 0x081FFFFF):
+```c
+typedef struct {
+    uint32_t magic;       // 0x534E414B ("SNAK")
+    uint16_t highScore;   // Điểm cao nhất (2 bytes)
+    uint16_t reserved1;   // Dự trữ (2 bytes)
+    uint32_t playCount;   // Số lần chơi (4 bytes)
+    uint32_t checksum;    // CRC32 checksum (4 bytes)
+    // ... padding to fill 128KB
+} FlashStorageData_t;
+```
+
+**Features**:
+- Magic number: 0x534E414B để verify data hợp lệ
+- Checksum: Để detect data corruption
+- Write optimization: Chỉ ghi khi có high score mới
+- Erase cycles: ~10K-100K cycles, tiết kiệm bằng cách giảm writes
+
+#### 2.4.2. SDRAM Memory (8MB = 0x800000 bytes)
+```
+0xD0000000 ─────────┐
+            ...     │ TouchGFX Frame Buffer (~150 KB)
+            ...     │ TouchGFX Assets Cache (sprites, fonts, etc.)
+            ...     │ FreeRTOS Heap
+            ...     │ Game state, snake segments, etc.
+0xD07FFFFF ─────────┘
+```
+
+**Allocation**:
+- Frame Buffer: 240 × 320 × 2 bytes (RGB565) = 150 KB
+- Assets Cache: ~500 KB (bitmaps, fonts)
+- FreeRTOS Heap: ~5 MB (remaining)
+- Game Memory: < 50 KB (snake data, game state)
+
+#### 2.4.3. Internal RAM (192 KB = 0x30000 bytes)
+```
+0x20000000 ─────────┐
+            ...     │ Stack, Global variables
+            ...     │ FreeRTOS Task stacks:
+            ...     │   - defaultTask: 512 bytes
+            ...     │   - GUI_Task: 32 KB
+            ...     │ Heap (small objects)
+0x2002FFFF ─────────┘
+```
+
+---
+
+### 2.5. Cấu Hình Xung Nhịp (Clock Configuration)
+
+#### 2.5.1. Sơ Đồ Clock Tree
+```
+HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
+                      ↓ ÷2
+                SYSCLK = 180 MHz
+                      ↓
+        ┌─────────────┼─────────────┐
+        ↓             ↓             ↓
+    AHB (÷1)     APB1 (÷4)      APB2 (÷2)
+    180 MHz      45 MHz         90 MHz
+        ↓             ↓             ↓
+   LTDC         I2C3           TIM7, SPI5
+   DMA2D        FreeRTOS        GPIO
+   FMC SDRAM
+```
+
+#### 2.5.2. Chi Tiết
+- **HSE** (High Speed External): 8 MHz (từ crystal oscillator trên board)
+- **PLL** (Phase Locked Loop): Nhân 45 lần → 360 MHz
+- **Over-Drive Mode**: Cho phép SYSCLK = 180 MHz (vượt 168 MHz normal limit)
+- **SYSCLK**: 180 MHz (CPU clock)
+- **AHB**: 180 MHz (không chia) - cho LTDC, DMA2D, FMC SDRAM
+- **APB1**: 45 MHz (÷4) - cho I2C3, FreeRTOS timer
+- **APB2**: 90 MHz (÷2) - cho TIM7, SPI5, GPIO fast speed
+
+---
+
+### 2.6. Cấu Hình Ngoại Vi (Peripheral Configuration)
+
+#### 2.6.1. LTDC (LCD-TFT Display Controller)
+
+**Mục đích**: Điều khiển LCD display ILI9341
+
+**Cấu hình**:
+- **Timing**: 240x320 @ 60 Hz
+- **Pixel Clock**: ~9.6 MHz
+- **Color Format**: RGB565 (16-bit, 5-6-5 bits per RGB)
+- **Layer 0**: 
+  - Pixel Format: RGB565
+  - Frame Buffer Address: SDRAM @ 0xD0000000
+  - Size: 240 × 320 pixels
+  - Single buffering (không double-buffer do SDRAM limited)
+
+**Refresh Cycle**:
+```
+Horizontal Timing:
+  Display Width: 240 pixels
+  Front Porch: 16 pixels
+  Sync Width: 10 pixels  
+  Back Porch: 40 pixels
+  Total: ~306 pixels = 31.875 μs @ 9.6 MHz
+
+Vertical Timing:
+  Display Height: 320 pixels
+  Front Porch: 4 lines
+  Sync Width: 2 lines
+  Back Porch: 2 lines
+  Total: ~328 lines = 10.44 ms
+  Frame Rate: 95.8 Hz (throttled to 60 Hz by software)
+```
+
+#### 2.6.2. DMA2D (Graphics Accelerator)
+
+**Mục đích**: Tăng tốc độ xử lý đồ họa (blitting, fills)
+
+**Cấu hình**:
+- **Mode**: Memory-to-Memory with PFC (Pixel Format Conversion)
+- **Usage**: 
+  - Bitmap blitting (drawing snake, food, UI)
+  - Rectangle fills (background)
+  - Color conversion (nếu cần)
+- **Performance**: 
+  - Tốc độ: ~2-4 pixels per clock cycle
+  - Giảm CPU workload từ 80% xuống ~40-50%
+
+#### 2.6.3. FMC SDRAM Interface
+
+**Mục đích**: Giao tiếp với external 8MB SDRAM
+
+**Cấu hình**:
+- **Bank**: Bank 2 (Chip Select 2)
+- **Device**: IS42S16400J (16Mb SDRAM, 1M × 16 bits)
+- **Data Width**: 16-bit (2 bytes)
+- **Address Lines**: A0-A12 (4096 rows)
+- **CAS Latency**: 3 cycles
+- **Refresh Cycle**: 
+  - Refresh Period: 64ms (typical for SDRAM)
+  - Number of Rows: 4096
+  - Refresh Interval: 64ms / 4096 rows = 15.625 μs per row
+  - Refresh Count: Configured trong STM32CubeMX
+
+**Timing Parameters**:
+```
+tAC (Access Time): 15 ns
+tOH (Output Hold): 2.5 ns
+Setup Time: 2 ns
+Hold Time: 1 ns
+CAS Latency: 3 CLK @ 90 MHz (divided from 180 MHz AHB)
+```
+
+**Memory Map**:
+- Start Address: 0xD0000000
+- End Address: 0xD07FFFFF (8MB)
+- TouchGFX Frame Buffer: 0xD0000000 (150 KB)
+
+---
+
+### 2.7. Các Thông Số Tính Toán
+
+#### 2.7.1. Game Rendering
+```
+Frame Buffer Size: 240 × 320 × 2 bytes = 153.6 KB
+Refresh Rate: 60 FPS
+Frame Time: 16.67 ms
+Pixel Throughput: 240 × 320 × 60 = 4.608 Mpixels/s
+
+LTDC Pixel Clock: 9.6 MHz
+DMA2D Throughput: ~2-4 pixels per clock (with PFC)
+Effective Throughput: 19.2 - 38.4 Mpixels/s (plenty for rendering)
+```
+
+#### 2.7.2. Memory Bandwidth
+```
+SDRAM Clock: 90 MHz (AHB ÷2)
+Data Width: 16-bit (2 bytes)
+Max Bandwidth: 90 MHz × 2 bytes = 180 MB/s
+
+Typical Usage:
+- Frame Buffer Read: 240 × 320 × 2 bytes × 60 fps = 9.2 MB/s
+- Texture/Asset Reads: ~50 MB/s
+- Headroom: ~121 MB/s (67% utilization)
+```
+
+#### 2.7.3. CPU Processing
+```
+SYSCLK: 180 MHz
+Game Update Frequency: 60 FPS
+Time per Frame: 16.67 ms
+
+Typical CPU Cycles per Frame:
+- Game Logic: 5-10% (snake movement, collision, food spawn)
+- GUI Rendering: 30-40% (widget updates, bitmap drawing)
+- RTOS Overhead: 5-10%
+- DMA2D Hardware: 40-50% (offloads from CPU)
+
+Total CPU Usage: 40-50% (during gameplay)
+```
+
+---
+
+### 2.8. Power Supply & Electrical
+
+#### 2.8.1. Power Sources
+- **Main**: USB 5V (via ST-Link)
+- **Board Regulators**: 
+  - 3.3V (for MCU, peripherals, LCD, sensors)
+  - 1.2V (core voltage, regulated internally)
+
+#### 2.8.2. GPIO Drive Capabilities
+- **Output**: 
+  - Standard Output: 25 mA max per pin
+  - Buzzer (PG13): ~10 mA 
+  - ISD1820 (PD12): ~5 mA (open-drain trigger)
+  
+- **Input**:
+  - Buttons (PD4-7): Internal pull-up (~100 kΩ)
+  - Noise immunity: Schmitt trigger inputs
+
+#### 2.8.3. Supply Current Estimation
+```
+Running (normal gameplay):
+  MCU Core: ~40-50 mA
+  SDRAM: ~20-30 mA
+  LCD Display: ~50-80 mA
+  Other peripherals: ~10-20 mA
+  Total: ~150-200 mA
+
+Sleep Mode (if implemented):
+  CPU stopped: ~5-10 mA
+  Peripherals off: ~30-50 mA
+  Total: ~35-60 mA
+```
+
+## 3. Thiết Kế Phần Mềm (Software Design)
+
+### 3.1. Thông Số Kỹ Thuật Phần Mềm
 - **Framework**: TouchGFX 4.26.0, STM32CubeMX 6.16.0, STM32CubeF4 Firmware v1.28.3
 - **RTOS**: FreeRTOS (2 tasks: defaultTask 512 bytes stack, GUI_Task 32KB stack)
 - **Architecture**: Model-View-Presenter (MVP) pattern
@@ -26,15 +359,15 @@ Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board s�
 - **Color Depth**: 16-bit RGB565
 - **Frame Rate**: 60 FPS
 
-## 2. Kiến Trúc Phần Mềm
+---
 
-### 2.1. Cấu Trúc Tổng Thể (MVP Pattern)
+### 3.2. Cấu Trúc Tổng Thể (MVP Pattern)
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                    main.c (C)                       │
 │  - Hardware Initialization                          │
-│  - FreeRTOS Tasks                                   │
+│  - FreeRTOS scheduler                               │
 │  - GPIO Button Polling (defaultTask)                │
 │  - Flash Storage Management                         │
 │  - Audio Hardware Control                           │
@@ -42,7 +375,7 @@ Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board s�
                    │ extern "C" interface
                    ▼
 ┌─────────────────────────────────────────────────────┐
-│          SnakeInterface.h/cpp (C/C++ Bridge)        │
+│          SnakeInterface.h (API declaration)         │
 │  - Snake_UpdateButtonStates()                       │
 │  - Snake_PlayBuzzer()                               │
 │  - Snake_PlayMusic()                                │
@@ -53,10 +386,20 @@ Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board s�
                    ▼
 ┌─────────────────────────────────────────────────────┐
 │              Model.hpp/cpp (C++)                    │
-│  - SnakeGame instance                               │
-│  - Button states management                         │
-│  - High score tracking (RAM + Flash)                │
-│  - tick() - event distribution to Views             │
+│  1) Model                                           │
+│     - Lưu trạng thái button                         │
+│     - Edge detection trong tick()                   │
+│     - Gọi ModelListener::buttonPressed()            │
+│     - Lưu lastScore, highScore                      │
+│                                                     │
+│  2) SnakeGame (logic game thuần)                    │
+│     - Di chuyển rắn                                 │
+│     - Va chạm, food, big food                       │
+│     - Score, difficulty                             │
+│     - Sinh sound event                              │
+│                                                     │
+│  3) SnakeInterface implementation                   │
+│     - Bridge từ main.c sang Model                   │
 └──────────────────┬──────────────────────────────────┘
                    │ MVP: Model ↔ Presenter ↔ View
                    ▼
@@ -77,314 +420,34 @@ Dự án trò chơi Snake được triển khai trên STM32F429I-DISCO board s�
 └─────────────────────────────────────────────────────┘
 ```
 
-### 2.2. Module Structure
+Để đơn giản hoá project, nhóm gộp implementation của SnakeGame và SnakeInterface vào Model.cpp. Về mặt kiến trúc, đây không phải cách tổ chức tối ưu, nhưng với project này việc gộp giúp giảm số lượng file và đơn giản hóa việc debug trên hệ nhúng.
 
-#### 2.2.1. Core Module (C)
-**Vị trí**: `Snake/Core/`
+---
 
-##### main.c
-- **Chức năng chính**:
-  - Khởi tạo phần cứng: Clock (180MHz), Peripherals (GPIO, I2C, SPI, LTDC, DMA2D, FMC SDRAM)
-  - Khởi tạo FreeRTOS với 2 tasks:
-    - `defaultTask` (512 bytes stack): Quét nút bấm, quản lý buzzer
-    - `GUI_Task` (32KB stack): TouchGFX rendering engine
-  - Polling GPIO buttons mỗi 20ms (debouncing)
-  - Audio hardware control (buzzer on PG13, ISD1820 on PD12)
-  - Flash storage initialization
+### 3.3. Luồng hoạt động của hệ thống
 
-##### flash_storage.c/h
-- **Chức năng**: Persistent storage cho high score
-- **Storage Location**: Sector 23 (0x081E0000 - 0x081FFFFF, 128KB)
-- **Data Structure**:
-  ```c
-  typedef struct {
-      uint32_t magic;       // 0x534E414B ("SNAK")
-      uint16_t highScore;   // Điểm cao nhất
-      uint16_t reserved1;   // Dự trữ
-      uint32_t playCount;   // Số lần chơi
-      uint32_t checksum;    // CRC32-like checksum
-  } FlashStorageData_t;
-  ```
-- **Write Cycle Optimization**: Chỉ ghi khi có high score mới để tiết kiệm flash erase cycles (~10K-100K cycles)
-- **Data Integrity**: Magic number + checksum verification
-
-##### audio_playback.c/h
-- **Chức năng**: Audio playback qua ISD1820 module
-- **Hardware Interface**: 
-  - Buzzer (PG13): PWM-like output cho beep sounds
-  - ISD1820 (PD12 - PLAY-L): Active-low pulse trigger (100ms)
-- **Sound Events**:
-  - `SOUND_EAT_FOOD`: 100ms beep
-  - `SOUND_EAT_BIGFOOD`: 300ms beep
-  - `SOUND_GAME_OVER`: 1000ms beep + ISD1820 music playback
-
-#### 2.2.2. TouchGFX Module (C++)
-**Vị trí**: `Snake/TouchGFX/gui/`
-
-##### Model.hpp/cpp
-- **Chức năng**: Central data manager trong MVP pattern
-- **Responsibilities**:
-  - Quản lý `SnakeGame` instance (singleton pattern)
-  - Button state management với edge detection
-  - High score tracking (RAM cache + Flash sync)
-  - Event distribution qua `ModelListener` interface
-- **Key Methods**:
-  - `updateButtonStates()`: Nhận button states từ main.c
-  - `tick()`: Gọi mỗi frame, detect button edge (rising edge)
-  - `saveGameScore()`: Auto-save to Flash nếu là high score
-  - `loadHighScoreFromFlash()`: Restore từ Flash khi khởi động
-
-##### SnakeGame.hpp/cpp
-- **Chức năng**: Core game logic engine
-- **Game Constants**:
-  ```cpp
-  CELL_SIZE = 10 pixels         // Kích thước 1 ô lưới
-  GRID_WIDTH = 24 cells         // 240px / 10px
-  GRID_HEIGHT = 28 cells        // 280px / 10px
-  MAX_SNAKE_LENGTH = 100        // Giới hạn độ dài rắn
-  BIGFOOD_DURATION_MS = 5000    // BigFood tồn tại 5 giây
-  BIGFOOD_APPEAR_AFTER = 5      // Xuất hiện sau 5 mồi thường
-  BIGFOOD_MAX_SCORE = 500       // Điểm tối đa (giảm theo thời gian)
-  ```
-
-- **Difficulty Levels**:
-  | Level     | Speed (cells/sec) | Points/Food | Tick Interval (frames @ 60 FPS) |
-  |-----------|------------------|-------------|--------------------------------|
-  | EASY      | 1                | 1           | 60 ticks (~1000ms)             |
-  | NORMAL    | 3                | 3           | 20 ticks (~333ms)              |
-  | HARD      | 5                | 5           | 12 ticks (~200ms)              |
-  | INSANE    | 8                | 8           | 7 ticks (~117ms)               |
-  | NIGHTMARE | 12               | 12          | 5 ticks (~83ms)                |
-
-- **Key Algorithms**:
-
-  **1. Snake Movement**:
-  ```cpp
-  void moveSnake() {
-      // Lưu vị trí cũ của head
-      Position prevPos = snake[0];
-      
-      // Di chuyển head theo hướng hiện tại
-      switch (currentDirection) {
-          case UP:    snake[0].y--; break;
-          case DOWN:  snake[0].y++; break;
-          case LEFT:  snake[0].x--; break;
-          case RIGHT: snake[0].x++; break;
-      }
-      
-      // Wrap-around (teleport) khi chạm tường
-      if (snake[0].x < 0) snake[0].x = GRID_WIDTH - 1;
-      else if (snake[0].x >= GRID_WIDTH) snake[0].x = 0;
-      if (snake[0].y < 0) snake[0].y = GRID_HEIGHT - 1;
-      else if (snake[0].y >= GRID_HEIGHT) snake[0].y = 0;
-      
-      // Di chuyển body segments theo head
-      for (int i = 1; i < snakeLength; i++) {
-          Position temp = snake[i];
-          snake[i] = prevPos;
-          prevPos = temp;
-      }
-  }
-  ```
-
-  **2. Collision Detection**:
-  ```cpp
-  bool checkCollision() {
-      // Chỉ kiểm tra va chạm với chính mình (không có tường)
-      for (int i = 1; i < snakeLength; i++) {
-          if (snake[0] == snake[i])
-              return true;  // Game over
-      }
-      return false;
-  }
-  ```
-
-  **3. Food Spawning (LCG Random)**:
-  ```cpp
-  void spawnFood() {
-      Position newPos;
-      do {
-          // Linear Congruential Generator
-          randomState = randomState * 1103515245 + 12345;
-          newPos.x = (randomState >> 16) % GRID_WIDTH;
-          randomState = randomState * 1103515245 + 12345;
-          newPos.y = (randomState >> 16) % GRID_HEIGHT;
-      } while (isPositionOnSnake(newPos) || isPositionOnBigFood(newPos));
-      food = newPos;
-  }
-  ```
-
-  **4. BigFood Scoring (Time-based)**:
-  ```cpp
-  uint32_t getBigFoodScore() {
-      uint32_t elapsed = Snake_GetTickMs() - bigFoodStartTime;
-      if (elapsed > BIGFOOD_DURATION_MS)
-          elapsed = BIGFOOD_DURATION_MS;
-      // Điểm giảm tuyến tính: 500 → 0 trong 5 giây
-      return (BIGFOOD_MAX_SCORE * (BIGFOOD_DURATION_MS - elapsed)) / BIGFOOD_DURATION_MS;
-  }
-  ```
-
-  **5. Direction Control (Anti-180° Turn)**:
-  ```cpp
-  void setDirection(SnakeDirection dir) {
-      // Ngăn rắn quay 180° (tự ăn chính mình)
-      if ((currentDirection == UP && dir == DOWN) ||
-          (currentDirection == DOWN && dir == UP) ||
-          (currentDirection == LEFT && dir == RIGHT) ||
-          (currentDirection == RIGHT && dir == LEFT)) {
-          return;  // Bỏ qua lệnh
-      }
-      nextDirection = dir;  // Buffered input
-  }
-  ```
-
-##### Screen Views (Screen1-3View)
-
-**Screen1View (Menu)**:
-- **Chức năng**: Main menu + difficulty selection
-- **UI Elements**:
-  - Difficulty display với color coding:
-    - EASY: Green (0, 255, 0)
-    - NORMAL: Yellow (255, 255, 0)
-    - HARD: Red (255, 0, 0)
-    - INSANE: Magenta (255, 0, 255)
-    - NIGHTMARE: Purple (128, 0, 128)
-  - "Start Game" button → Screen2
-  - "Change Difficulty" button → cycle through levels
-- **Logic**: `cycleDifficulty()` changes EASY→NORMAL→HARD→INSANE→NIGHTMARE→EASY
-
-**Screen2View (Game Play)**:
-- **Chức năng**: Main game screen với real-time rendering
-- **UI Layout**:
-  - Game area: 240x280 pixels (box1 container)
-  - Score display: Top-right corner (textArea1)
-  - Snake rendering: Dynamic Image array (100 segments max)
-  - Food rendering: Single Image at grid position
-  - BigFood rendering: 2x2 cells Image (20x20 pixels)
-
-- **Rendering Algorithm**:
-  ```cpp
-  void updateSnakeDisplay() {
-      // Ẩn tất cả segments hiện có
-      for (int i = 0; i < currentSegmentCount; i++)
-          snakeSegments[i].setVisible(false);
-      
-      // Render snake mới
-      for (int i = 0; i < game->getSnakeLength(); i++) {
-          Position pos = game->getSnakeSegment(i);
-          
-          // Chọn bitmap dựa trên vị trí trong snake
-          uint16_t bitmapId;
-          if (i == 0) {
-              // Head: hướng theo currentDirection
-              bitmapId = getHeadBitmapId(game->getCurrentDirection());
-          } else if (i == game->getSnakeLength() - 1) {
-              // Tail: hướng theo segment trước nó
-              bitmapId = getTailBitmapId(game->getSegmentDirection(i));
-          } else if (isTurnSegment(i, fromDir, toDir)) {
-              // Turn segment: 16 combinations (4 from × 4 to directions)
-              bitmapId = getTurnBitmapId(fromDir, toDir);
-          } else {
-              // Mid segment: straight horizontal/vertical
-              bitmapId = getMidBitmapId(game->getSegmentDirection(i));
-          }
-          
-          // Set position và hiển thị
-          snakeSegments[i].setBitmap(Bitmap(bitmapId));
-          snakeSegments[i].setXY(pos.x * CELL_SIZE, pos.y * CELL_SIZE);
-          snakeSegments[i].setVisible(true);
-      }
-      
-      currentSegmentCount = game->getSnakeLength();
-      snakeContainer.invalidate();  // Trigger redraw
-  }
-  ```
-
-- **Turn Segment Detection**:
-  ```cpp
-  bool isTurnSegment(uint8_t index, SnakeDirection &fromDir, SnakeDirection &toDir) {
-      Position prev = game->getSnakeSegment(index - 1);  // Towards head
-      Position curr = game->getSnakeSegment(index);
-      Position next = game->getSnakeSegment(index + 1);  // Towards tail
-      
-      // Tính direction từ curr → prev (exit direction)
-      int dx1 = prev.x - curr.x;
-      int dy1 = prev.y - curr.y;
-      // Handle wrap-around...
-      toDir = calculateDirection(dx1, dy1);
-      
-      // Tính direction từ next → curr (enter direction)
-      int dx2 = curr.x - next.x;
-      int dy2 = curr.y - next.y;
-      fromDir = calculateDirection(dx2, dy2);
-      
-      return (toDir != fromDir);  // Turn nếu hướng vào ≠ hướng ra
-  }
-  ```
-
-- **BigFood Timer Display**:
-  - BigFood image có opacity animation (not implemented in current code)
-  - Timer countdown: `getBigFoodTimeLeftMs()` / 5000 * 100 = percentage
-  - Auto-disappear sau 5 giây nếu không ăn
-
-- **Game Over Handling**:
-  ```cpp
-  void handleTickEvent() {
-      if (game->isGameOver()) {
-          gameOverDelay++;
-          if (gameOverDelay >= 60) {  // 1 second delay @ 60 FPS
-              presenter->saveScore(game->getScore());
-              application().gotoScreen3ScreenNoTransition();
-          }
-          return;
-      }
-      
-      tickCounter++;
-      if (tickCounter >= game->getTickInterval()) {
-          tickCounter = 0;
-          game->update();  // Update game logic
-          updateSnakeDisplay();
-          updateFoodDisplay();
-          updateBigFoodDisplay();
-          updateScoreDisplay();
-      }
-  }
-  ```
-
-**Screen3View (Game Over)**:
-- **Chức năng**: Hiển thị kết quả game và high score
-- **UI Elements**:
-  - Current score display (textArea_Score)
-  - High score display (textArea_Highscore)
-  - "Play Again" button → Screen2 (reset game)
-  - "Main Menu" button → Screen1
-- **Data Flow**: `updateScoreDisplay()` pulls từ `presenter->getLastScore()` và `presenter->getHighScore()`
-
-## 3. Luồng Xử Lý Dữ Liệu
-
-### 3.1. Khởi Động Hệ Thống
+#### 3.3.1. Khởi Động Hệ Thống
 ```
-1. main() → HAL_Init() → SystemClock_Config() (180 MHz)
-2. Peripheral Init: GPIO, LTDC, DMA2D, FMC SDRAM, I2C, SPI, TIM7
-3. FlashStorage_Init() → Load high score từ Sector 23
+1. main() → HAL_Init() → SystemClock_Config()
+2. Peripheral Init: GPIO, LTDC, DMA2D, FMC SDRAM
+3. FlashStorage_Init()
 4. FreeRTOS osKernelInitialize()
 5. Create Tasks:
    - defaultTask (button polling, buzzer control)
-   - GUI_Task (TouchGFX rendering @ 60 FPS)
+   - GUI_Task (TouchGFX rendering 60 FPS)
 6. osKernelStart() → RTOS scheduler running
 7. TouchGFX init → Model() constructor → loadHighScoreFromFlash()
 8. Screen1View (Menu) hiển thị
 ```
 
-### 3.2. Game Loop (Screen2)
+#### 3.3.2. Game Loop (Screen2)
 ```
 defaultTask (mỗi 20ms):
-1. Read GPIO buttons (PD4-PD7, active LOW with pull-up)
+1. Đọc trạng thái GPIO của các nút điều khiển (PD4-PD7, active LOW with pull-up)
 2. Debouncing check
 3. Snake_UpdateButtonStates() → Model.updateButtonStates()
 4. Update buzzer GPIO (PG13) nếu buzzerEndTick expired
-5. Check "all 4 buttons pressed 3 seconds" → FlashStorage_EraseAll()
+5. Nếu cả 4 nút được giữ trong 3 giây → FlashStorage_EraseAll()
 
 GUI_Task / Screen2View::handleTickEvent() (mỗi ~16.67ms @ 60 FPS):
 1. tickCounter++
@@ -397,44 +460,124 @@ GUI_Task / Screen2View::handleTickEvent() (mỗi ~16.67ms @ 60 FPS):
       c. checkCollision() - tự va chạm → game over
       d. updateBigFood() - check 5-second timer expiration
    4. updateSnakeDisplay() - render snake với đúng bitmap
-   5. updateFoodDisplay()
+   5. updateFoodDisplay() - cập nhật hiển thị thức ăn
    6. updateBigFoodDisplay()
-   7. updateScoreDisplay()
+   7. updateScoreDisplay() - cập nhật hiển thị điểm số
    8. Reset tickCounter = 0
 }
-3. handleSoundEvent() - trigger buzzer/ISD1820
-4. if (gameOver) wait 1 sec → gotoScreen3()
+3. handleSoundEvent() - kích hoạt buzzer/ISD1820
+4. Nếu phát hiện trạng thái Game Over → gotoScreen3() - chuyển sang Screen3 sau 1 giây.
 ```
 
-### 3.3. High Score Persistence
+#### 3.3.3. High Score Persistence
 ```
 Game Over:
-1. Screen2View detects game->isGameOver() == true
-2. Delay 60 frames → presenter->saveScore(score)
-3. Model::saveGameScore(score):
-   - if (score > highScore) {
-       highScore = score;
-       Snake_SaveHighScore(score) → FlashStorage_SaveHighScore():
-         a. Erase Sector 23 (128KB)
-         b. Write struct { magic, highScore, playCount, checksum }
-         c. Verify write success
-     }
-4. Transition to Screen3 (display lastScore, highScore)
+1. Screen2View phát hiện trạng thái Game Over
+2. Gửi điểm số hiện tại về Model
+3. Model::saveGameScore(score): Nếu score > highScore thì cập nhật highScore trong Flash.
+4. Chuyển sang Screen3 hiển thị điểm ván vừa chơi, highScore.
 
-Next Boot:
+Lần khởi động tiếp theo:
 1. FlashStorage_Init() → ReadDataFromFlash()
-2. Verify magic == 0x534E414B && checksum valid
-3. if valid: return highScore
-   else: return 0 (first boot hoặc corrupted data)
+2. Kiểm tra dữ liệu hợp lệ
+    - nếu hợp lệ thì sử dụng highScore đã lưu.
+    - nếu không hợp lệ thì highScore = 0 (first boot hoặc corrupted data)
+<<<<<<< HEAD
 ```
+
+---
+
+### 3.4. Thuật toán game Snake
+
+#### 3.4.1. Cấu trúc dữ liệu chính
+
+Các hằng số sau được sử dụng xuyên suốt thuật toán
+```
+GRID_WIDTH, GRID_HEIGHT # Kích thước lưới logic của game (đơn vị: ô)
+MAX_SNAKE_LENGTH # Độ dài tối đa của rắn, dùng để khai báo mảng tĩnh lưu thân rắn
+BIGFOOD_DURATION_MS # Thời gian tồn tại tối đa của BigFood (ms)
+BIGFOOD_APPEAR_AFTER # Số lần ăn food thường để spawn BigFood
+BIGFOOD_MAX_SCORE # Điểm tối đa khi ăn BigFood
+```
+
+Dữ liệu vị trí trong game được biểu diễn bằng struct Position, đơn vị đều là cell. Tất cả các thực thể trong game như rắn, thức ăn đều sử dụng Position chứ không sử dụng trực tiếp số pixel.
+```
+struct Position {
+    int16_t x; # nằm trong [0, GRID_WIDTH)
+    int16_t y; # nằm trong [0, GRID_HEIGHT)
+};
+```
+
+Hướng di chuyển của rắn được biểu diễn bằng enum SnakeDirection:
+```
+enum SnakeDirection
+{
+    SNAKE_DIR_UP = 0,
+    SNAKE_DIR_DOWN,
+    SNAKE_DIR_LEFT,
+    SNAKE_DIR_RIGHT
+};
+```
+
+Để đơn giản, thân rắn được biểu diễn bằng một mảng tĩnh, không sử dụng linked list hay container động:
+```
+Position snake[MAX_SNAKE_LENGTH]; # snake[0] là đầu rắn, phần tử thứ i là vị trí đốt thứ i của rắn
+uint8_t snakeLength; # số đốt rắn hiện tại, không bao giờ vượt quá MAX_SNAKE_LENGTH
+```
+
+Hướng di chuyển của rắn được lưu trữ như sau, với mục đích để tránh đổi hướng 180 độ và đồng bộ input với nhịp update của game:
+```
+SnakeDirection currentDirection; # hướng thực sự được áp dụng khi update
+SnakeDirection nextDirection; # hướng nhận được từ input
+```
+
+Thức ăn được lưu trữ như phía dưới. BigFood chiếm 2x2 ô, thời gian xuất hiện được đo bằng ```Snake_GetTickMs()``` nhằm tính điểm thưởng (BigFood xuất hiện càng lâu trước khi ăn thì được càng ít điểm):
+```
+Position food;
+Position bigFood;
+bool bigFoodActive;
+uint32_t bigFoodStartTime;
+```
+
+#### 3.4.2. Các thuật toán chính
+
+Hàm trung tâm của thuật toán là ```bool SnakeGame::update()```, được gọi định kỳ từ game loop (Screen2View). Hàm này thực hiện các công việc sau
+
+  - Kiểm tra trạng thái kết thúc game (nếu game over thì không cập nhật thêm).
+  - Áp dụng hướng điều khiển (```currentDirection = nextDirection```). Hướng mới chỉ được áp dụng tại thời điểm update, không áp dụng ngay khi nhấn nút.
+  - Di chuyển rắn (```moveSnake()```):
+    + Di chuyển đầu rắn theo ```currentDirection```. Nếu vượt biên thì wrap-around sang phía đối diện chứ không chết vì tường.
+    + Dịch thân rắn: Mỗi đốt lấy vị trí của đốt trước đó, thực hiện bằng cách sao chép tuần tự trong mảng ```snake```.
+  - Cập nhật trạng thái BigFood theo thời gian (```updateBigFood()```):
+    + Nếu thời gian tồn tại vượt quá ```BIGFOOD_DURATION_MS``` thì BigFood bị hủy, không cho ăn nữa.
+  - Kiểm tra va chạm với BigFood (so sánh `snake[0]` với 4 ô BigFood chiếm), rồi kiểm tra va chạm với food thường (so sánh `snake[0]` với vị trí food thường). Nếu có va chạm thì
+    + Tăng chiều dài snake bằng ```growSnake()```, với điều kiện không vượt quá ```MAX_SNAKE_LENGTH```. 
+    + Tính điểm theo độ khó game (nếu ăn food thường) hoặc theo thời gian BigFood xuất hiện (nếu ăn BigFood).
+    + Bật âm thanh ăn food thường hoặc BigFood.
+  - Kiểm tra va chạm thân rắn bằng cách so sánh `snake[0]` với `snake[1..snakeLength-1]`. Nếu có thì chuyển trạng thái Game over.
+
+Các food thường và BigFood được sinh ngẫu nhiên và đảm bảo không chạm vào rắn, trên màn hình luôn chỉ có 1 food thường. Mỗi BigFood chỉ được sinh ra nếu rắn đã ăn đủ 5 food thường liên tiếp.
+
+#### 3.4.3. Cung cấp dữ liệu cho tầng hiển thị
+```SnakeGame``` không vẽ trực tiếp, mà cung cấp dữ liệu cho View thông qua các getter:
+  - ```snake[i], snakeLength```
+  - ```getSegmentDirection(i)```
+  - ```food, bigFood, bigFoodActive```
+  - ```score, gameOver```
+  - ```pendingSound```
+
+View sử dụng các dữ liệu này để chọn bitmap phù hợp, đặt vị trí hiển thị và phát âm thanh phù hợp.
+
+
+---
 
 ## 4. Giao Diện Đồ Họa & Assets
 
 ### 4.1. Bitmap Assets
 **Vị trí**: `Snake/TouchGFX/assets/images/`
 
-| File Name       | Size     | Usage                              |
-|----------------|----------|-----------------------------------|
+| File Name       | Size    | Usage                              |
+|----------------|----------|------------------------------------|
 | Head.png       | 10x10    | Snake head (UP direction)          |
 | Head1.png      | 10x10    | Snake head (RIGHT direction)       |
 | Head2.png      | 10x10    | Snake head (DOWN direction)        |
@@ -452,33 +595,7 @@ Next Boot:
 | Food.png       | 10x10    | Normal food                        |
 | BigFood.png    | 20x20    | BigFood (2x2 cells)                |
 
-### 4.2. Bitmap Selection Logic
-
-**Head Bitmap**:
-```cpp
-uint16_t getHeadBitmapId(SnakeDirection dir) {
-    switch (dir) {
-        case SNAKE_DIR_UP:    return BITMAP_HEAD_ID;   // Head.png
-        case SNAKE_DIR_RIGHT: return BITMAP_HEAD1_ID;  // Head1.png
-        case SNAKE_DIR_DOWN:  return BITMAP_HEAD2_ID;  // Head2.png
-        case SNAKE_DIR_LEFT:  return BITMAP_HEAD3_ID;  // Head3.png
-    }
-}
-```
-
-**Turn Bitmap (16 combinations)**:
-```cpp
-uint16_t getTurnBitmapId(SnakeDirection from, SnakeDirection to) {
-    // from = hướng vào, to = hướng ra
-    if (from == LEFT && to == UP)     return BITMAP_TURN_ID;   // Turn.png
-    if (from == DOWN && to == RIGHT)  return BITMAP_TURN1_ID;  // Turn1.png
-    if (from == RIGHT && to == DOWN)  return BITMAP_TURN2_ID;  // Turn2.png
-    if (from == UP && to == LEFT)     return BITMAP_TURN3_ID;  // Turn3.png
-    // ... (các rotation và flip còn lại)
-}
-```
-
-### 4.3. Rendering Pipeline
+### 4.2. Rendering Pipeline
 ```
 LTDC (Layer 0) ← DMA2D ← Frame Buffer (SDRAM @ 240x320x2 bytes = 150KB)
                           ↑
@@ -492,200 +609,4 @@ LTDC (Layer 0) ← DMA2D ← Frame Buffer (SDRAM @ 240x320x2 bytes = 150KB)
 - **Frame Buffer**: Single buffering (không double-buffer do SDRAM limited)
 - **DMA2D Acceleration**: Sử dụng cho bitmap blitting, color fill
 - **TouchGFX Partial Updates**: Chỉ redraw khu vực invalidated (optimize performance)
-
-## 5. Hardware Interface
-
-### 5.1. GPIO Mapping
-
-| Pin   | Function        | Type    | Config          | Description                    |
-|-------|----------------|---------|-----------------|--------------------------------|
-| PD4   | BTN_UP         | Input   | Pull-up         | UP button (active LOW)          |
-| PD5   | BTN_DOWN       | Input   | Pull-up         | DOWN button (active LOW)        |
-| PD6   | BTN_LEFT       | Input   | Pull-up         | LEFT button (active LOW)        |
-| PD7   | BTN_RIGHT      | Input   | Pull-up         | RIGHT button (active LOW)       |
-| PG13  | BUZZER         | Output  | Push-pull       | Buzzer control (active HIGH)    |
-| PD12  | ISD1820_PLAY   | Output  | Push-pull       | ISD1820 PLAY-L (active LOW pulse)|
-| PC2   | LCD_CS         | Output  | Push-pull       | LCD chip select                 |
-| PD13  | LCD_WRX        | Output  | Push-pull       | LCD write/read select           |
-| PE2-5 | Debug GPIO     | Output  | Push-pull       | Performance testing pins        |
-
-**Button Wiring**:
 ```
-STM32 PD4-7 (with internal pull-up) ──── Button ── GND
-```
-
-**Buzzer Wiring**:
-```
-STM32 PG13 ── Buzzer (+) ── Buzzer (-) ── GND
-```
-
-**ISD1820 Wiring**:
-```
-ISD1820 Module     STM32F429I-DISCO
-VCC  ───────────── 3.3V or 5V
-GND  ───────────── GND
-PLAY-L ───────────── PD12
-SP+/SP- ──────────── Speaker
-REC  ───────────── Manual record button on module
-MIC  ───────────── Microphone input
-```
-
-### 5.2. Memory Map
-
-**Flash Memory (2MB total)**:
-```
-0x08000000 ─────────┐
-            ...     │ Sector 0-22: Code + Constants (1920 KB)
-0x081DFFFF ─────────┤
-0x081E0000 ─────────┐
-            ...     │ Sector 23: Persistent Data (128 KB)
-0x081FFFFF ─────────┘
-```
-
-**SDRAM Memory (8MB total)**:
-```
-0xD0000000 ─────────┐
-            ...     │ TouchGFX Frame Buffer (~150 KB)
-            ...     │ TouchGFX Assets Cache
-            ...     │ FreeRTOS Heap
-0xD07FFFFF ─────────┘
-```
-
-**RAM Memory (192 KB internal)**:
-```
-0x20000000 ─────────┐
-            ...     │ Stack, Global variables
-            ...     │ FreeRTOS Task stacks
-0x2002FFFF ─────────┘
-```
-
-### 5.3. Clock Configuration
-```
-HSE (8 MHz) → PLL × 45 → 360 MHz (with Over-Drive mode)
-                      ↓ ÷2
-                SYSCLK = 180 MHz
-                      ↓
-        ┌─────────────┼─────────────┐
-        ↓             ↓             ↓
-    AHB (÷1)     APB1 (÷4)      APB2 (÷2)
-    180 MHz      45 MHz         90 MHz
-        ↓             ↓             ↓
-    LTDC, DMA2D   I2C3         TIM7, SPI5
-```
-
-
-
-## 6. Các Tính Năng Nâng Cao
-
-### 6.1. BigFood Mechanics
-- **Trigger**: Xuất hiện sau khi ăn 5 mồi thường
-- **Duration**: 5000ms (5 giây)
-- **Scoring**: Điểm giảm tuyến tính theo thời gian
-  ```
-  score(t) = 500 × (5000 - t) / 5000
-  t=0ms    → 500 điểm
-  t=2500ms → 250 điểm
-  t=5000ms → 0 điểm (expired)
-  ```
-- **Size**: 2×2 cells (20×20 pixels)
-- **Collision**: Check nếu snake head overlaps bất kỳ cell nào trong 2×2
-
-### 6.2. Wrap-Around Mechanics
-- Không có tường cứng (không game over khi chạm tường)
-- Snake teleport sang bên đối diện:
-  ```cpp
-  if (x < 0) x = GRID_WIDTH - 1;   // Left edge → Right edge
-  if (x >= GRID_WIDTH) x = 0;      // Right edge → Left edge
-  if (y < 0) y = GRID_HEIGHT - 1;  // Top edge → Bottom edge
-  if (y >= GRID_HEIGHT) y = 0;     // Bottom edge → Top edge
-  ```
-- Game over chỉ xảy ra khi snake head va chạm với body
-
-### 6.3. Buffered Input
-- Lệnh di chuyển được buffer trong `nextDirection`
-- Ngăn chặn 180° turn (self-collision ngay lập tức)
-- Apply vào frame tiếp theo:
-  ```cpp
-  void update() {
-      currentDirection = nextDirection;  // Apply buffered input
-      moveSnake();
-  }
-  ```
-
-### 6.4. High Score Reset
-- **Secret Combo**: Giữ cả 4 nút (UP + DOWN + LEFT + RIGHT) trong 3 giây
-- **Confirmation**: 2 beep sounds (200ms each, 100ms gap)
-- **Action**: `FlashStorage_EraseAll()` → Sector 23 erased
-- **Implemented in**: `defaultTask()` polling loop
-
-### 6.5. Difficulty Progression
-- Người chơi có thể chọn độ khó trước khi chơi (Screen1)
-- Mỗi level có tốc độ và điểm thưởng riêng
-- Không auto-scale (người chơi tự chọn challenge level)
-
-## 7. Performance & Optimization
-
-### 7.1. Performance Metrics
-- **Frame Rate**: 60 FPS (stable)
-- **Memory**:
-  - Stack: defaultTask 512 bytes, GUI_Task 32 KB
-  - Heap: ~200 KB (TouchGFX assets cache)
-  - Frame Buffer: 150 KB (240×320×2)
-
-### 7.2. Optimizations Applied
-
-**TouchGFX Rendering**:
-- Partial invalidation: Chỉ redraw snake segments thay đổi
-- Bitmap caching: Pre-load tất cả sprites vào SDRAM
-- DMA2D hardware acceleration cho blitting
-
-**Game Logic**:
-- Fixed-point arithmetic (không dùng float)
-- Simple LCG random (không cần hardware RNG)
-- Minimal dynamic memory allocation
-
-**FreeRTOS Task Priority**:
-- GUI_Task: Normal priority (rendering không bị starve)
-- defaultTask: Normal priority (button polling đủ nhanh @ 20ms)
-
-
-## 8. Source Code Structure
-```
-Snake_game_on_stm32/
-├── README.md                          # This file
-├── Snake/
-│   ├── Core/
-│   │   ├── Inc/
-│   │   │   ├── main.h                 # GPIO definitions, extern declarations
-│   │   │   ├── flash_storage.h        # Flash API
-│   │   │   └── audio_playback.h       # Audio API
-│   │   └── Src/
-│   │       ├── main.c                 # Hardware init, FreeRTOS tasks
-│   │       ├── flash_storage.c        # Persistent storage implementation
-│   │       └── audio_playback.c       # Audio hardware control
-│   ├── TouchGFX/
-│   │   ├── gui/
-│   │   │   ├── include/gui/
-│   │   │   │   ├── model/
-│   │   │   │   │   ├── Model.hpp      # Central data manager
-│   │   │   │   │   └── ModelListener.hpp
-│   │   │   │   ├── common/
-│   │   │   │   │   ├── SnakeGame.hpp  # Core game logic
-│   │   │   │   │   └── SnakeInterface.h # C/C++ bridge
-│   │   │   │   └── screen[1-3]_screen/
-│   │   │   │       ├── Screen[1-3]View.hpp
-│   │   │   │       └── Screen[1-3]Presenter.hpp
-│   │   │   └── src/
-│   │   │       ├── model/
-│   │   │       │   └── Model.cpp      # SnakeGame + Model implementation
-│   │   │       └── screen[1-3]_screen/
-│   │   │           ├── Screen[1-3]View.cpp
-│   │   │           └── Screen[1-3]Presenter.cpp
-│   │   └── assets/
-│   │       └── images/                # Snake sprites, food, bigfood
-│   ├── Drivers/                       # STM32 HAL, BSP, CMSIS
-│   ├── Middlewares/                   # FreeRTOS, TouchGFX libraries
-│   └── STM32F429XX_FLASH.ld           # Modified linker script (Sector 23 reserved)
-└── wav_to_c_array.py                  # Audio conversion tool (unused)
-```
-
