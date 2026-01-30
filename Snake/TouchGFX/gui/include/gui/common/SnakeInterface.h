@@ -32,23 +32,14 @@ extern "C"
      *
      * This function triggers the ISD1820 module to play the recorded audio.
      * Called from TouchGFX when game over occurs.
+     *
+     * WIRING: P-L pin of ISD1820 → PD12 on STM32
      */
     void Snake_PlayMusic(void);
 
-    /**
-     * @brief Start recording audio to ISD1820
-     *
-     * This function pulls the REC pin low to start recording audio.
-     * Call Snake_StopRecording() to stop recording.
+    /* Recording functions removed - audio is already recorded to ISD1820 module
+     * Use the REC button on ISD1820 module to record audio manually.
      */
-    void Snake_StartRecording(void);
-
-    /**
-     * @brief Stop recording audio to ISD1820
-     *
-     * This function releases the REC pin to stop recording audio.
-     */
-    void Snake_StopRecording(void);
 
     /**
      * @brief Get current system time in milliseconds
@@ -57,6 +48,16 @@ extern "C"
      * This provides real-time clock for BigFood timer.
      */
     uint32_t Snake_GetTickMs(void);
+
+    /**
+     * @brief Test ISD1820 playback (debug function)
+     *
+     * This function tests ISD1820 by playing recorded audio.
+     * Use for hardware debugging and verification.
+     */
+    void Snake_TestISD1820Play(void);
+
+    /* Snake_TestISD1820Record() removed - use REC button on module instead */
 
 #ifdef __cplusplus
 }
